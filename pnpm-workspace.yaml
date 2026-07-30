@@ -6,5 +6,6 @@ onlyBuiltDependencies:
   - "@nestjs/core"
   - "@prisma/client"
   - "@prisma/engines"
+  - "argon2"
   - "esbuild"
   - "prisma"
