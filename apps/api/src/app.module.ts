@@ -7,6 +7,8 @@ import { AuditModule } from "./common/audit/audit.module";
 import { RolesGuard } from "./common/access/roles.guard";
 import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./auth/auth.module";
+import { BranchesModule } from "./branches/branches.module";
+import { GroupsModule } from "./groups/groups.module";
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { AuthModule } from "./auth/auth.module";
     AuditModule,
     HealthModule,
     AuthModule,
+    BranchesModule,
+    GroupsModule,
   ],
   providers: [
     // RolesGuard is applied network-wide; routes without @Roles(...) pass

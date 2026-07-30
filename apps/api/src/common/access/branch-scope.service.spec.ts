@@ -58,6 +58,32 @@ describe("BranchScopeService", () => {
     expect(service.hasAnyRole(u, ["TEACHER"])).toBe(false);
   });
 
+  it("checks role membership scoped to one branch out of several roles", () => {
+    const u = user({
+      grants: [
+        { branchId: "b1", role: "TEACHER" },
+        { branchId: "b2", role: "BRANCH_MANAGER" },
+      ],
+    });
+
+    expect(service.hasAnyRoleInBranch(u, ["BRANCH_MANAGER", "OWNER"], "b2")).toBe(true);
+    expect(service.hasAnyRoleInBranch(u, ["BRANCH_MANAGER", "OWNER"], "b1")).toBe(false);
+  });
+
+  it("assertRoleInBranch throws ForbiddenException when the role isn't held in that branch", () => {
+    const u = user({ grants: [{ branchId: "b1", role: "TEACHER" }] });
+
+    expect(() => service.assertRoleInBranch(u, ["BRANCH_MANAGER"], "b1")).toThrow(
+      ForbiddenException,
+    );
+    expect(() => service.assertRoleInBranch(u, ["TEACHER"], "b1")).not.toThrow();
+  });
+
+  it("assertRoleInBranch never throws for network-wide users", () => {
+    const u = user({ hasNetworkAccess: true });
+    expect(() => service.assertRoleInBranch(u, ["BRANCH_MANAGER"], "any-branch")).not.toThrow();
+  });
+
   it("produces an empty Prisma filter for network-wide users and an `in` filter otherwise", () => {
     const scoped = user({ grants: [{ branchId: "b1", role: "TEACHER" }] });
     const network = user({ hasNetworkAccess: true });

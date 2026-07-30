@@ -39,4 +39,16 @@ export class BranchScopeService {
     if (user.hasNetworkAccess) return true;
     return user.grants.some((g) => roles.includes(g.role));
   }
+
+  hasAnyRoleInBranch(user: AuthenticatedUser, roles: Role[], branchId: string): boolean {
+    if (user.hasNetworkAccess) return true;
+    return user.grants.some((g) => g.branchId === branchId && roles.includes(g.role));
+  }
+
+  /** Throws unless the user holds one of `roles` specifically within `branchId`. */
+  assertRoleInBranch(user: AuthenticatedUser, roles: Role[], branchId: string): void {
+    if (!this.hasAnyRoleInBranch(user, roles, branchId)) {
+      throw new ForbiddenException("Insufficient role for this branch");
+    }
+  }
 }
