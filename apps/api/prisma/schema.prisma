@@ -1,0 +1,447 @@
+// Stage 1 MVP schema — core records module only.
+// Billing (tariff/contract/invoice/payment), leads, messaging, and consent
+// entities are intentionally not modeled yet (Stage 2-4 of the TRD roadmap).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Access control
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPERADMIN
+  OWNER
+  BRANCH_MANAGER
+  MANAGER
+  ACCOUNTANT
+  TEACHER
+  PARENT
+}
+
+model User {
+  id                String   @id @default(uuid())
+  email             String?  @unique
+  phone             String?  @unique
+  passwordHash      String
+  fullName          String
+  totpSecret        String?
+  totpEnabled       Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branchRoles       UserBranchRole[]
+  parentProfile     Parent?
+  staffProfile      Staff?
+  refreshTokens     RefreshToken[]
+  auditLogEntries   AuditLog[]
+
+  @@map("user")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_token")
+}
+
+// One row per (user, branch, role) grant. A user can hold different roles in
+// different branches; effective permissions are the union of all grants.
+model UserBranchRole {
+  id       String @id @default(uuid())
+  userId   String
+  branchId String
+  role     Role
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId, role])
+  @@index([branchId])
+  @@map("user_branch_role")
+}
+
+// ---------------------------------------------------------------------------
+// Branches, groups
+// ---------------------------------------------------------------------------
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  locale    String   @default("ru")
+  timezone  String   @default("UTC")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userRoles        UserBranchRole[]
+  groups           Group[]
+  families         Family[]
+  waitlistEntries  WaitlistEntry[]
+  timesheetPeriods TimesheetPeriod[]
+  staff            Staff[]
+
+  @@map("branch")
+}
+
+model GroupType {
+  id            String  @id @default(uuid())
+  name          String  @unique
+  minAgeMonths  Int
+  maxAgeMonths  Int
+
+  groups Group[]
+
+  @@map("group_type")
+}
+
+model Group {
+  id                String   @id @default(uuid())
+  branchId          String
+  groupTypeId       String
+  name              String
+  plannedCapacity   Int
+  maxCapacity       Int
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  groupType GroupType @relation(fields: [groupTypeId], references: [id])
+
+  children        Child[]
+  waitlistEntries WaitlistEntry[]
+  attendances     Attendance[]
+  staff           StaffGroup[]
+
+  @@index([branchId])
+  @@map("group")
+}
+
+// ---------------------------------------------------------------------------
+// Families, children
+// ---------------------------------------------------------------------------
+
+model Family {
+  id        String   @id @default(uuid())
+  branchId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  parents        Parent[]
+  children       Child[]
+  trustedPersons TrustedPerson[]
+
+  @@index([branchId])
+  @@map("family")
+}
+
+model Parent {
+  id             String  @id @default(uuid())
+  familyId       String
+  userId         String? @unique
+  fullName       String
+  relationship   String // "мать", "отец", "опекун", ...
+  contactPriority Int    @default(1)
+  phone          String?
+  email          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([familyId])
+  @@map("parent")
+}
+
+model TrustedPerson {
+  id           String    @id @default(uuid())
+  familyId     String
+  fullName     String
+  documentInfo String?
+  photoKey     String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@map("trusted_person")
+}
+
+enum ChildStatus {
+  WAITLIST
+  ENROLLED
+  SUSPENDED
+  DISCHARGED
+}
+
+model Child {
+  id             String      @id @default(uuid())
+  familyId       String
+  groupId        String?
+  fullName       String
+  birthDate      DateTime
+  sex            String?
+  photoKey       String?
+  status         ChildStatus @default(WAITLIST)
+  enrolledAt     DateTime?
+  suspendedAt    DateTime?
+  discharedAt    DateTime?
+  dischargeReasonId String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  family          Family           @relation(fields: [familyId], references: [id])
+  group           Group?           @relation(fields: [groupId], references: [id])
+  dischargeReason DischargeReason? @relation(fields: [dischargeReasonId], references: [id])
+
+  medical         ChildMedical?
+  documents       Document[]
+  attendances     Attendance[]
+  waitlistEntries WaitlistEntry[]
+  history         ChildHistoryEntry[]
+
+  @@index([familyId])
+  @@index([groupId])
+  @@map("child")
+}
+
+// Sensitive medical fields — encrypted at rest at the application layer
+// (see EncryptionService). Teachers only ever see `criticalInfo`.
+model ChildMedical {
+  id                String  @id @default(uuid())
+  childId           String  @unique
+  allergiesEnc      String? // encrypted
+  chronicEnc        String? // encrypted
+  activityLimitsEnc String? // encrypted
+  doctorContactEnc  String? // encrypted
+  criticalInfo      String? // plain text, teacher-visible summary (allergies/diet only)
+  updatedAt         DateTime @updatedAt
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("child_medical")
+}
+
+// Effective-dated transfers, suspensions, discharges — append-only.
+model ChildHistoryEntry {
+  id           String   @id @default(uuid())
+  childId      String
+  type         String // "transfer" | "suspend" | "resume" | "discharge" | "tariff_change"
+  fromGroupId  String?
+  toGroupId    String?
+  effectiveAt  DateTime
+  reason       String?
+  actorUserId  String
+  createdAt    DateTime @default(now())
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId])
+  @@map("child_history_entry")
+}
+
+enum DocumentOwnerType {
+  CHILD
+  STAFF
+}
+
+model DocumentType {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  hasExpiry Boolean @default(false)
+
+  documents Document[]
+
+  @@map("document_type")
+}
+
+model Document {
+  id             String            @id @default(uuid())
+  ownerType      DocumentOwnerType
+  ownerId        String
+  documentTypeId String
+  fileKey        String
+  fileName       String
+  expiresAt      DateTime?
+  uploadedById   String
+  createdAt      DateTime          @default(now())
+
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id])
+  child        Child?       @relation(fields: [ownerId], references: [id], map: "document_child_fk")
+
+  @@index([ownerType, ownerId])
+  @@index([expiresAt])
+  @@map("document")
+}
+
+model DischargeReason {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  isActive Boolean @default(true)
+
+  children Child[]
+
+  @@map("discharge_reason")
+}
+
+model WaitlistEntry {
+  id         String   @id @default(uuid())
+  branchId   String
+  groupId    String
+  childId    String?
+  leadName   String?
+  priority   Int      @default(0)
+  queuedAt   DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  group  Group  @relation(fields: [groupId], references: [id])
+  child  Child? @relation(fields: [childId], references: [id])
+
+  @@index([branchId, groupId])
+  @@map("waitlist_entry")
+}
+
+// ---------------------------------------------------------------------------
+// Attendance & timesheets
+// ---------------------------------------------------------------------------
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT_SICK
+  ABSENT_EXCUSED
+  VACATION
+  LATE
+  UNMARKED
+}
+
+model Attendance {
+  id             String            @id @default(uuid())
+  childId        String
+  groupId        String
+  date           DateTime          @db.Date
+  status         AttendanceStatus  @default(UNMARKED)
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  pickedUpById   String? // Parent.id or TrustedPerson.id
+  pickedUpByType String? // "parent" | "trusted_person"
+  markedById     String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  child Child @relation(fields: [childId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+
+  @@unique([childId, date])
+  @@index([groupId, date])
+  @@map("attendance")
+}
+
+enum TimesheetPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+model TimesheetPeriod {
+  id         String                 @id @default(uuid())
+  branchId   String
+  month      Int
+  year       Int
+  status     TimesheetPeriodStatus  @default(OPEN)
+  closedById String?
+  closedAt   DateTime?
+  createdAt  DateTime               @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  corrections TimesheetCorrection[]
+
+  @@unique([branchId, year, month])
+  @@map("timesheet_period")
+}
+
+// Required to edit attendance after a period is closed (invariant #4, TRD 11.3).
+model TimesheetCorrection {
+  id           String   @id @default(uuid())
+  periodId     String
+  attendanceId String
+  reason       String
+  actorUserId  String
+  createdAt    DateTime @default(now())
+
+  period TimesheetPeriod @relation(fields: [periodId], references: [id])
+
+  @@map("timesheet_correction")
+}
+
+// ---------------------------------------------------------------------------
+// Staff (basic level, per TRD module M6)
+// ---------------------------------------------------------------------------
+
+model Staff {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  branchId  String
+  position  String
+  hiredAt   DateTime?
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+  groups StaffGroup[]
+
+  @@map("staff")
+}
+
+model StaffGroup {
+  staffId String
+  groupId String
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, groupId])
+  @@map("staff_group")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — append-only, never updated/deleted from the app layer.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entity     String
+  entityId   String
+  action     String // "create" | "update" | "delete"
+  oldValue   Json?
+  newValue   Json?
+  actorId    String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
