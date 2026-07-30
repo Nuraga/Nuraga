@@ -285,6 +285,7 @@ model Document {
   documentTypeId String
   fileKey        String
   fileName       String
+  mimeType       String
   expiresAt      DateTime?
   uploadedById   String
   createdAt      DateTime          @default(now())
