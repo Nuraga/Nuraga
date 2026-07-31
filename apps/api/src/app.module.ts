@@ -13,6 +13,7 @@ import { BranchesModule } from "./branches/branches.module";
 import { GroupsModule } from "./groups/groups.module";
 import { StaffModule } from "./staff/staff.module";
 import { DictionariesModule } from "./dictionaries/dictionaries.module";
+import { ImportModule } from "./import/import.module";
 import { FamiliesModule } from "./families/families.module";
 import { ChildrenModule } from "./children/children.module";
 import { EnrollmentModule } from "./enrollment/enrollment.module";
@@ -32,6 +33,7 @@ import { AttendanceModule } from "./attendance/attendance.module";
     GroupsModule,
     StaffModule,
     DictionariesModule,
+    ImportModule,
     FamiliesModule,
     ChildrenModule,
     EnrollmentModule,
