@@ -31,6 +31,7 @@ describe("FamiliesService", () => {
         create: jest.fn((args: any) => Promise.resolve({ id: "f1", ...args.data })),
         findMany: jest.fn(() => Promise.resolve([])),
         findUnique: jest.fn(() => Promise.resolve({ id: "f1", branchId, name: "Ивановы" })),
+        findUniqueOrThrow: jest.fn(() => Promise.resolve({ id: "f1", branchId, name: "Ивановы" })),
         update: jest.fn((args: any) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
       parent: {

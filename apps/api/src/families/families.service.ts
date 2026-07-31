@@ -61,8 +61,14 @@ export class FamiliesService {
 
   async findOne(user: AuthenticatedUser, branchId: string, id: string) {
     this.branchScope.assertRoleInBranch(user, [...FAMILY_READ_ROLES], branchId);
-    const family = await this.getOwnedOrThrow(branchId, id);
-    return family;
+    await this.getOwnedOrThrow(branchId, id);
+
+    // Re-fetched with relations — getOwnedOrThrow stays a lean ownership
+    // check for the write paths that don't need them.
+    return this.prisma.family.findUniqueOrThrow({
+      where: { id },
+      include: { parents: true, children: true, trustedPersons: true },
+    });
   }
 
   async update(user: AuthenticatedUser, branchId: string, id: string, dto: UpdateFamilyDto) {
