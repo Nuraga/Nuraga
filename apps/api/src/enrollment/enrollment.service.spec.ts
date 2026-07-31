@@ -54,7 +54,7 @@ describe("EnrollmentService", () => {
       waitlistEntry: { deleteMany: jest.fn(() => Promise.resolve()) },
       childHistoryEntry: { create: jest.fn(() => Promise.resolve()) },
       dischargeReason: {
-        findUnique: jest.fn(() => Promise.resolve({ id: "dr1", name: "Выпуск" })),
+        findUnique: jest.fn(() => Promise.resolve({ id: "dr1", name: "Выпуск", isActive: true })),
       },
     };
     childAccess = { assertWriteAccess: jest.fn() };
@@ -149,6 +149,17 @@ describe("EnrollmentService", () => {
       prisma.dischargeReason.findUnique.mockResolvedValue(null);
       await expect(
         service.discharge(manager, branchId, childId, { dischargeReasonId: "missing" }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects an archived discharge reason", async () => {
+      prisma.dischargeReason.findUnique.mockResolvedValue({
+        id: "dr1",
+        name: "Выпуск",
+        isActive: false,
+      });
+      await expect(
+        service.discharge(manager, branchId, childId, { dischargeReasonId: "dr1" }),
       ).rejects.toThrow(BadRequestException);
     });
 

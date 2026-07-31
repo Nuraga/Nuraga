@@ -16,16 +16,13 @@ export class GroupsService {
     private readonly audit: AuditService,
   ) {}
 
-  async listGroupTypes() {
-    return this.prisma.groupType.findMany({ orderBy: { minAgeMonths: "asc" } });
-  }
-
   async create(user: AuthenticatedUser, branchId: string, dto: CreateGroupDto) {
     this.branchScope.assertRoleInBranch(user, [...GROUP_MANAGER_ROLES], branchId);
     this.assertCapacityOrdering(dto.plannedCapacity, dto.maxCapacity);
 
     const groupType = await this.prisma.groupType.findUnique({ where: { id: dto.groupTypeId } });
     if (!groupType) throw new BadRequestException("Unknown group type");
+    if (!groupType.isActive) throw new BadRequestException("This group type is archived");
 
     const group = await this.prisma.group.create({
       data: { ...dto, branchId },

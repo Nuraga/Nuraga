@@ -15,11 +15,6 @@ export class GroupsController {
     private readonly capacity: GroupCapacityService,
   ) {}
 
-  @Get("group-types")
-  listGroupTypes() {
-    return this.groups.listGroupTypes();
-  }
-
   @Post("branches/:branchId/groups")
   create(
     @CurrentUser() user: AuthenticatedUser,

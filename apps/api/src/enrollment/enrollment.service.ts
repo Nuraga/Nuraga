@@ -189,6 +189,7 @@ export class EnrollmentService {
       where: { id: dto.dischargeReasonId },
     });
     if (!reason) throw new BadRequestException("Unknown discharge reason");
+    if (!reason.isActive) throw new BadRequestException("This discharge reason is archived");
 
     const effectiveAt = resolveEffectiveAt(dto.effectiveAt);
     const fromGroupId = child.groupId;

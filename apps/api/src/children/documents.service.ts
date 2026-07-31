@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { AuditService } from "../common/audit/audit.service";
@@ -34,6 +34,7 @@ export class DocumentsService {
       where: { id: dto.documentTypeId },
     });
     if (!docType) throw new NotFoundException("Unknown document type");
+    if (!docType.isActive) throw new BadRequestException("This document type is archived");
 
     const key = `children/${childId}/${randomUUID()}-${this.sanitizeFileName(file.originalname)}`;
     await this.storage.save(key, file.buffer, file.mimetype);

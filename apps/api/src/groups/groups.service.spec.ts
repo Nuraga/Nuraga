@@ -44,7 +44,9 @@ describe("GroupsService", () => {
         update: jest.fn((args: any) => Promise.resolve({ id: args.where.id, ...args.data })),
       },
       groupType: {
-        findUnique: jest.fn(() => Promise.resolve({ id: "gt1", name: "Младшая" })),
+        findUnique: jest.fn(() =>
+          Promise.resolve({ id: "gt1", name: "Младшая", isActive: true }),
+        ),
         findMany: jest.fn(() => Promise.resolve([])),
       },
     };
@@ -80,6 +82,18 @@ describe("GroupsService", () => {
     await expect(
       service.create(manager, branchId, {
         groupTypeId: "missing",
+        name: "Group A",
+        plannedCapacity: 10,
+        maxCapacity: 12,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it("rejects an archived groupTypeId", async () => {
+    prisma.groupType.findUnique.mockResolvedValue({ id: "gt1", name: "Младшая", isActive: false });
+    await expect(
+      service.create(manager, branchId, {
+        groupTypeId: "gt1",
         name: "Group A",
         plannedCapacity: 10,
         maxCapacity: 12,

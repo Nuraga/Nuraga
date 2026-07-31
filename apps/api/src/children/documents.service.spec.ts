@@ -1,4 +1,4 @@
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { DocumentsService } from "./documents.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
@@ -30,7 +30,9 @@ describe("DocumentsService", () => {
 
   beforeEach(() => {
     prisma = {
-      documentType: { findUnique: jest.fn(() => Promise.resolve({ id: "dt1", name: "Справка" })) },
+      documentType: {
+        findUnique: jest.fn(() => Promise.resolve({ id: "dt1", name: "Справка", isActive: true })),
+      },
       document: {
         create: jest.fn((args: any) => Promise.resolve({ id: "doc1", ...args.data })),
         findMany: jest.fn(() => Promise.resolve([])),
@@ -83,6 +85,14 @@ describe("DocumentsService", () => {
     await expect(
       service.upload(manager, branchId, childId, { documentTypeId: "missing" }, file),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it("rejects upload for an archived document type", async () => {
+    prisma.documentType.findUnique.mockResolvedValue({ id: "dt1", name: "Справка", isActive: false });
+    const file = { buffer: Buffer.from("x"), mimetype: "text/plain", originalname: "a.txt" };
+    await expect(
+      service.upload(manager, branchId, childId, { documentTypeId: "dt1" }, file),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it("list() returns documents with a signed download URL", async () => {

@@ -107,6 +107,7 @@ model GroupType {
   name          String  @unique
   minAgeMonths  Int
   maxAgeMonths  Int
+  isActive      Boolean @default(true)
 
   groups Group[]
 
@@ -272,6 +273,7 @@ model DocumentType {
   id       String  @id @default(uuid())
   name     String  @unique
   hasExpiry Boolean @default(false)
+  isActive Boolean @default(true)
 
   documents Document[]
 
