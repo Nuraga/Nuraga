@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { AuditService } from "../common/audit/audit.service";
+import { PasswordService } from "../auth/password.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import { CreateStaffDto } from "./dto/create-staff.dto";
 
@@ -13,19 +14,15 @@ export class StaffService {
     private readonly prisma: PrismaService,
     private readonly branchScope: BranchScopeService,
     private readonly audit: AuditService,
+    private readonly password: PasswordService,
   ) {}
 
   async create(user: AuthenticatedUser, branchId: string, dto: CreateStaffDto) {
     this.branchScope.assertRoleInBranch(user, [...STAFF_MANAGER_ROLES], branchId);
 
-    const staff = await this.prisma.staff.create({
-      data: {
-        userId: dto.userId,
-        branchId,
-        position: dto.position,
-        hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
-      },
-    });
+    const staff = dto.userId
+      ? await this.createForExistingUser(branchId, dto)
+      : await this.createWithNewUser(branchId, dto);
 
     await this.audit.record({
       entity: "staff",
@@ -35,6 +32,72 @@ export class StaffService {
       actorId: user.id,
     });
     return staff;
+  }
+
+  /** Links an already-existing account (e.g. a parent) to a new Staff record. */
+  private async createForExistingUser(branchId: string, dto: CreateStaffDto) {
+    const existing = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!existing) throw new NotFoundException("User not found");
+
+    return this.prisma.staff.create({
+      data: {
+        userId: dto.userId!,
+        branchId,
+        position: dto.position,
+        hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
+      },
+    });
+  }
+
+  /**
+   * Provisions a brand new account + branch role grant + Staff record
+   * together — there is no other endpoint that creates staff user accounts.
+   */
+  private async createWithNewUser(branchId: string, dto: CreateStaffDto) {
+    if (!dto.fullName || !dto.password || !dto.role) {
+      throw new BadRequestException(
+        "fullName, password, and role are required when userId is not provided",
+      );
+    }
+    if (!dto.email && !dto.phone) {
+      throw new BadRequestException("email or phone is required to create a new account");
+    }
+
+    if (dto.email) {
+      const emailTaken = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      if (emailTaken) throw new ConflictException("A user with this email already exists");
+    }
+    if (dto.phone) {
+      const phoneTaken = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+      if (phoneTaken) throw new ConflictException("A user with this phone already exists");
+    }
+
+    const passwordHash = await this.password.hash(dto.password);
+
+    return this.prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          fullName: dto.fullName!,
+          email: dto.email,
+          phone: dto.phone,
+          passwordHash,
+        },
+      });
+
+      await tx.userBranchRole.create({
+        data: { userId: newUser.id, branchId, role: dto.role! },
+      });
+
+      return tx.staff.create({
+        data: {
+          userId: newUser.id,
+          branchId,
+          position: dto.position,
+          hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
+        },
+        include: { user: { select: { id: true, fullName: true, email: true } } },
+      });
+    });
   }
 
   async findAllForBranch(user: AuthenticatedUser, branchId: string) {

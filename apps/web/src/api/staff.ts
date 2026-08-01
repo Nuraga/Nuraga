@@ -1,8 +1,14 @@
 import { api } from "./client";
-import type { Staff } from "./types";
+import type { Role, Staff } from "./types";
+
+export const STAFF_GRANTABLE_ROLES: Role[] = ["BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "TEACHER"];
 
 export interface CreateStaffInput {
-  userId: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  password: string;
+  role: Role;
   position: string;
   hiredAt?: string;
 }

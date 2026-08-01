@@ -2,11 +2,19 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
-import { staffApi } from "../api/staff";
+import { staffApi, STAFF_GRANTABLE_ROLES } from "../api/staff";
 import { groupsApi } from "../api/groups";
+import type { CreateStaffInput } from "../api/staff";
 import type { Staff } from "../api/types";
 import { ApiError } from "../api/client";
 import { useBranch } from "../layout/BranchContext";
+
+const ROLE_LABELS: Record<string, string> = {
+  BRANCH_MANAGER: "Управляющий филиалом",
+  MANAGER: "Менеджер",
+  ACCOUNTANT: "Бухгалтер",
+  TEACHER: "Воспитатель",
+};
 
 export default function StaffPage() {
   const { message } = App.useApp();
@@ -33,8 +41,7 @@ export default function StaffPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["staff", branchId] });
 
   const createMutation = useMutation({
-    mutationFn: (values: { userId: string; position: string; hiredAt?: string }) =>
-      staffApi.create(branchId, values),
+    mutationFn: (values: CreateStaffInput) => staffApi.create(branchId, values),
     onSuccess: () => {
       invalidate();
       setCreateOpen(false);
@@ -124,14 +131,45 @@ export default function StaffPage() {
         confirmLoading={createMutation.isPending}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={(values) => createMutation.mutate(values)}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values: CreateStaffInput) => {
+            if (!values.email && !values.phone) {
+              message.error("Укажите email или телефон");
+              return;
+            }
+            createMutation.mutate(values);
+          }}
+        >
+          <Form.Item label="ФИО" name="fullName" rules={[{ required: true, message: "Укажите ФИО" }]}>
+            <Input />
+          </Form.Item>
           <Form.Item
-            label="ID пользователя"
-            name="userId"
-            extra="UUID существующей учётной записи — управление пользователями пока выполняется вне интерфейса"
-            rules={[{ required: true, message: "Укажите ID пользователя" }]}
+            label="Email"
+            name="email"
+            extra="Укажите email или телефон (или оба) — это логин для входа"
+            rules={[{ type: "email", message: "Некорректный email" }]}
           >
             <Input />
+          </Form.Item>
+          <Form.Item label="Телефон" name="phone">
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label="Пароль"
+            name="password"
+            rules={[
+              { required: true, message: "Укажите пароль" },
+              { min: 6, message: "Минимум 6 символов" },
+            ]}
+          >
+            <Input.Password />
+          </Form.Item>
+          <Form.Item label="Роль" name="role" rules={[{ required: true, message: "Выберите роль" }]}>
+            <Select
+              options={STAFF_GRANTABLE_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+            />
           </Form.Item>
           <Form.Item label="Должность" name="position" rules={[{ required: true, message: "Укажите должность" }]}>
             <Input />
