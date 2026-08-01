@@ -137,4 +137,49 @@ export class ReportsService {
 
     return { branchId, groups: rows, total: rows.reduce((sum, r) => sum + r.waitlisted, 0) };
   }
+
+  /** Families whose balance (paid − invoiced, ТЗ §11.3 invariant #2) is negative. */
+  async debtRegistry(user: AuthenticatedUser, branchId: string) {
+    this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
+
+    const families = await this.prisma.family.findMany({
+      where: { branchId },
+      select: { id: true, name: true },
+    });
+
+    const rows = (
+      await Promise.all(
+        families.map(async (family) => {
+          const [paid, invoiced, oldestOpenInvoice] = await Promise.all([
+            this.prisma.payment.aggregate({
+              where: { familyId: family.id },
+              _sum: { amountMinor: true },
+            }),
+            this.prisma.invoice.aggregate({
+              where: { familyId: family.id, status: { in: ["APPROVED", "PARTIALLY_PAID", "PAID"] } },
+              _sum: { totalMinor: true },
+            }),
+            this.prisma.invoice.findFirst({
+              where: { familyId: family.id, status: { in: ["APPROVED", "PARTIALLY_PAID"] } },
+              orderBy: [{ year: "asc" }, { month: "asc" }],
+            }),
+          ]);
+
+          const balanceMinor = (paid._sum.amountMinor ?? 0) - (invoiced._sum.totalMinor ?? 0);
+          return {
+            familyId: family.id,
+            familyName: family.name,
+            debtMinor: -balanceMinor,
+            oldestUnpaidPeriod: oldestOpenInvoice
+              ? { year: oldestOpenInvoice.year, month: oldestOpenInvoice.month }
+              : null,
+          };
+        }),
+      )
+    )
+      .filter((r) => r.debtMinor > 0)
+      .sort((a, b) => b.debtMinor - a.debtMinor);
+
+    return { branchId, families: rows, totalDebtMinor: rows.reduce((sum, r) => sum + r.debtMinor, 0) };
+  }
 }

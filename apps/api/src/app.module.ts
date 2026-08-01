@@ -15,6 +15,12 @@ import { StaffModule } from "./staff/staff.module";
 import { DictionariesModule } from "./dictionaries/dictionaries.module";
 import { ImportModule } from "./import/import.module";
 import { ReportsModule } from "./reports/reports.module";
+import { TariffsModule } from "./billing/tariffs/tariffs.module";
+import { ServicesModule } from "./billing/services/services.module";
+import { DiscountsModule } from "./billing/discounts/discounts.module";
+import { ContractsModule } from "./billing/contracts/contracts.module";
+import { InvoicingModule } from "./billing/invoicing/invoicing.module";
+import { PaymentsModule } from "./billing/payments/payments.module";
 import { FamiliesModule } from "./families/families.module";
 import { ChildrenModule } from "./children/children.module";
 import { EnrollmentModule } from "./enrollment/enrollment.module";
@@ -36,6 +42,12 @@ import { AttendanceModule } from "./attendance/attendance.module";
     DictionariesModule,
     ImportModule,
     ReportsModule,
+    TariffsModule,
+    ServicesModule,
+    DiscountsModule,
+    ContractsModule,
+    InvoicingModule,
+    PaymentsModule,
     FamiliesModule,
     ChildrenModule,
     EnrollmentModule,

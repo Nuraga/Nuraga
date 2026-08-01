@@ -32,4 +32,9 @@ export class ReportsController {
   waitlist(@CurrentUser() user: AuthenticatedUser, @Param("branchId") branchId: string) {
     return this.reports.waitlistSummary(user, branchId);
   }
+
+  @Get("debt")
+  debtRegistry(@CurrentUser() user: AuthenticatedUser, @Param("branchId") branchId: string) {
+    return this.reports.debtRegistry(user, branchId);
+  }
 }

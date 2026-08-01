@@ -40,6 +40,12 @@ describe("ReportsService", () => {
       attendance: { findMany: jest.fn(() => Promise.resolve([])) },
       child: { findMany: jest.fn(() => Promise.resolve([])) },
       waitlistEntry: { groupBy: jest.fn(() => Promise.resolve([])) },
+      family: { findMany: jest.fn(() => Promise.resolve([])) },
+      payment: { aggregate: jest.fn(() => Promise.resolve({ _sum: { amountMinor: 0 } })) },
+      invoice: {
+        aggregate: jest.fn(() => Promise.resolve({ _sum: { totalMinor: 0 } })),
+        findFirst: jest.fn(() => Promise.resolve(null)),
+      },
     };
     capacity = {
       getOccupancy: jest.fn((groupId: string) =>
@@ -116,6 +122,31 @@ describe("ReportsService", () => {
         { groupId: "g2", groupName: "Старшая", waitlisted: 0 },
       ]);
       expect(report.total).toBe(3);
+    });
+  });
+
+  describe("debtRegistry", () => {
+    it("lists only families with a negative balance, sorted by debt descending", async () => {
+      prisma.family.findMany.mockResolvedValue([
+        { id: "f1", name: "Ивановы" },
+        { id: "f2", name: "Петровы" },
+        { id: "f3", name: "Сидоровы" },
+      ]);
+      prisma.payment.aggregate.mockImplementation(({ where }: any) => {
+        const sums: Record<string, number> = { f1: 100_00, f2: 500_00, f3: 300_00 };
+        return Promise.resolve({ _sum: { amountMinor: sums[where.familyId] } });
+      });
+      prisma.invoice.aggregate.mockImplementation(({ where }: any) => {
+        const sums: Record<string, number> = { f1: 400_00, f2: 500_00, f3: 250_00 };
+        return Promise.resolve({ _sum: { totalMinor: sums[where.familyId] } });
+      });
+
+      const report = await service.debtRegistry(manager, branchId);
+
+      expect(report.families).toEqual([
+        expect.objectContaining({ familyId: "f1", debtMinor: 300_00 }),
+      ]);
+      expect(report.totalDebtMinor).toBe(300_00);
     });
   });
 });
