@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { authApi } from "../api/auth";
 import { clearTokens, getRefreshToken, hasSession, setTokens, onSessionExpired } from "../api/client";
@@ -34,7 +34,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Guards against React 18 StrictMode's dev-only double effect invocation:
+  // refresh tokens are single-use (rotated server-side), so firing this
+  // twice on mount would race the second call against an already-consumed
+  // token.
+  const didInit = useRef(false);
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+
     if (hasSession()) {
       void loadCurrentUser();
     } else {
