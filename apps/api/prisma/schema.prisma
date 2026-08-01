@@ -98,6 +98,10 @@ model Branch {
   waitlistEntries  WaitlistEntry[]
   timesheetPeriods TimesheetPeriod[]
   staff            Staff[]
+  tariffs          Tariff[]
+  services         Service[]
+  invoices         Invoice[]
+  payments         Payment[]
 
   @@map("branch")
 }
@@ -152,6 +156,10 @@ model Family {
   parents        Parent[]
   children       Child[]
   trustedPersons TrustedPerson[]
+  discounts      Discount[]
+  contracts      Contract[]
+  invoices       Invoice[]
+  payments       Payment[]
 
   @@index([branchId])
   @@map("family")
@@ -223,6 +231,10 @@ model Child {
   attendances     Attendance[]
   waitlistEntries WaitlistEntry[]
   history         ChildHistoryEntry[]
+  serviceEnrollments ServiceEnrollment[]
+  discounts       Discount[]
+  contracts       Contract[]
+  invoiceLines    InvoiceLine[]
 
   @@index([familyId])
   @@index([groupId])
@@ -449,4 +461,278 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// Billing (Этап 2 ТЗ, раздел 6) — tariffs, services, discounts, contracts,
+// invoicing, payments. Money is always integer minor units (тиын/cents);
+// floating point is forbidden here per ТЗ §11.1. Approved invoices and
+// recorded payments are immutable — corrections happen via new adjustment
+// rows, never in-place edits (ТЗ §11.1, §6.4).
+// ---------------------------------------------------------------------------
+
+enum TariffType {
+  MONTHLY_FULL
+  MONTHLY_HALF_DAY
+  HOURLY
+  PAY_AS_YOU_GO
+  DUTY_GROUP
+}
+
+enum RecurrencePeriod {
+  MONTHLY
+  ONE_TIME
+  PER_VISIT
+}
+
+enum RecalcRule {
+  NONE
+  MEALS_ONLY
+  FULL_DAY_WITH_THRESHOLD
+}
+
+// A row is one immutable tariff *version* (ТЗ §6.1: "тарифы версионируются").
+// Changing a price means creating a new Tariff row with its own validFrom
+// and closing the previous version's validTo — never editing baseAmountMinor
+// on a version a Contract already points to, since that would silently
+// change the basis for already-generated invoices.
+model Tariff {
+  id                  String            @id @default(uuid())
+  branchId            String? // null = сеть целиком (network-wide tariff)
+  name                String
+  type                TariffType
+  baseAmountMinor     Int
+  currency            String            @default("KZT")
+  recurrence          RecurrencePeriod
+  recalcRule          RecalcRule        @default(NONE)
+  recalcThresholdDays Int? // e.g. "recalculated from the 4th sick day" (ТЗ §6.1)
+  includesDescription String? // "что включено": meals, nap, base activities
+  validFrom           DateTime
+  validTo             DateTime?
+  isActive            Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  branch    Branch?    @relation(fields: [branchId], references: [id])
+  contracts Contract[]
+
+  @@index([branchId])
+  @@map("tariff")
+}
+
+model Service {
+  id           String   @id @default(uuid())
+  branchId     String
+  name         String
+  priceMinor   Int
+  scheduleInfo String? // free text (e.g. "Пн/Ср/Пт, 16:00") — no full scheduling module yet
+  capacity     Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  branch      Branch               @relation(fields: [branchId], references: [id])
+  enrollments ServiceEnrollment[]
+  invoiceLines InvoiceLine[]
+
+  @@index([branchId])
+  @@map("service")
+}
+
+model ServiceEnrollment {
+  id        String    @id @default(uuid())
+  childId   String
+  serviceId String
+  startDate DateTime
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  child   Child   @relation(fields: [childId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([childId])
+  @@index([serviceId])
+  @@map("service_enrollment")
+}
+
+enum DiscountBasis {
+  SECOND_CHILD
+  PREPAYMENT
+  CORPORATE
+  STAFF
+  SOCIAL
+  DIRECTOR_DECISION
+}
+
+enum DiscountKind {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+// Family-wide (familyId set) or single-child (childId set) — exactly one of
+// the two, enforced at the service layer. DIRECTOR_DECISION requires a
+// mandatory reason and Owner/Branch Manager approval (ТЗ §6.3 — flagged as
+// "типичная зона финансовых утечек", so it gets its own audit visibility).
+model Discount {
+  id           String        @id @default(uuid())
+  familyId     String?
+  childId      String?
+  basis        DiscountBasis
+  kind         DiscountKind
+  value        Int // percent (0-100) for PERCENT, minor units for FIXED_AMOUNT
+  reason       String?
+  validFrom    DateTime
+  validTo      DateTime?
+  approvedById String
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+
+  family Family? @relation(fields: [familyId], references: [id])
+  child  Child?  @relation(fields: [childId], references: [id])
+
+  @@index([familyId])
+  @@index([childId])
+  @@map("discount")
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+  EXPIRED
+}
+
+model Contract {
+  id        String         @id @default(uuid())
+  familyId  String
+  childId   String
+  tariffId  String
+  number    String         @unique
+  startDate DateTime
+  endDate   DateTime?
+  status    ContractStatus @default(DRAFT)
+  fileKey   String? // scanned signed document, same object-storage pattern as Document
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id])
+  child  Child  @relation(fields: [childId], references: [id])
+  tariff Tariff @relation(fields: [tariffId], references: [id])
+
+  @@index([familyId])
+  @@index([childId])
+  @@map("contract")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+// One per (family, branch, year, month). Draft while the month-close review
+// is in progress; APPROVED freezes it (ТЗ §6.4: "после утверждения счёт
+// неизменяем — правки только через корректирующий документ").
+model Invoice {
+  id           String        @id @default(uuid())
+  familyId     String
+  branchId     String
+  year         Int
+  month        Int
+  status       InvoiceStatus @default(DRAFT)
+  totalMinor   Int           @default(0)
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  lines       InvoiceLine[]
+  allocations PaymentAllocation[]
+
+  @@unique([familyId, year, month])
+  @@index([branchId, year, month])
+  @@map("invoice")
+}
+
+enum InvoiceLineType {
+  TARIFF
+  SERVICE
+  FINE
+  RECALC
+  DISCOUNT
+  MANUAL_ADJUSTMENT
+  PREVIOUS_BALANCE
+}
+
+// amountMinor is signed — negative for discounts/recalculations/credits.
+// ruleRef captures *why* the line exists (which tariff/discount/attendance
+// data produced it) so a parent-facing breakdown is always explainable
+// (ТЗ §6: "по каждой строке счёта родитель должен видеть, откуда взялась сумма").
+model InvoiceLine {
+  id          String          @id @default(uuid())
+  invoiceId   String
+  childId     String?
+  serviceId   String?
+  type        InvoiceLineType
+  description String
+  amountMinor Int
+  ruleRef     String?
+  createdAt   DateTime        @default(now())
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  child   Child?   @relation(fields: [childId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_line")
+}
+
+enum PaymentMethod {
+  CASH
+  CARD_ONSITE
+  BANK_TRANSFER
+  ONLINE_GATEWAY
+}
+
+// Immutable once created (ТЗ §11.1) — refunds are a separate operation, not
+// implemented as an edit to this row (out of scope for the first Этап 2 pass).
+model Payment {
+  id           String        @id @default(uuid())
+  familyId     String
+  branchId     String
+  amountMinor  Int
+  method       PaymentMethod
+  paidAt       DateTime
+  externalRef  String?
+  recordedById String
+  createdAt    DateTime      @default(now())
+
+  family Family @relation(fields: [familyId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  allocations PaymentAllocation[]
+
+  @@index([familyId])
+  @@map("payment")
+}
+
+// Разнесение платежа: one payment can cover several invoices (FIFO), one
+// invoice can be covered by several payments. Sum of a payment's allocations
+// never exceeds its amountMinor (ТЗ §11.3 invariant #1).
+model PaymentAllocation {
+  id          String @id @default(uuid())
+  paymentId   String
+  invoiceId   String
+  amountMinor Int
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@map("payment_allocation")
 }
