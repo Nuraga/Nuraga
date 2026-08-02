@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Task } from "./types";
+import type { Task, TaskBoardStatus } from "./types";
 
 export interface CreateTaskInput {
   leadId?: string;
@@ -14,6 +14,8 @@ export interface TaskFilters {
   familyId?: string;
   assignedToId?: string;
   onlyOpen?: boolean;
+  /** "staff" restricts to general staff assignments (no lead/family link) — used by the kanban board. */
+  scope?: "staff";
 }
 
 export const tasksApi = {
@@ -21,4 +23,6 @@ export const tasksApi = {
     api.get<Task[]>(`/branches/${branchId}/tasks`, { ...filters }),
   create: (branchId: string, dto: CreateTaskInput) => api.post<Task>(`/branches/${branchId}/tasks`, dto),
   complete: (branchId: string, id: string) => api.post<Task>(`/branches/${branchId}/tasks/${id}/complete`),
+  updateStatus: (branchId: string, id: string, status: TaskBoardStatus) =>
+    api.patch<Task>(`/branches/${branchId}/tasks/${id}/status`, { status }),
 };

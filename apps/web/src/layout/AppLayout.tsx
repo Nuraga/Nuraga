@@ -9,6 +9,7 @@ import {
   BarChartOutlined,
   BookOutlined,
   CalendarOutlined,
+  CheckSquareOutlined,
   CreditCardOutlined,
   DollarOutlined,
   DownOutlined,
@@ -46,6 +47,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Лиды",
     icon: <FunnelPlotOutlined />,
     roles: ["OWNER", "BRANCH_MANAGER", "MANAGER"],
+  },
+  {
+    key: "/tasks",
+    label: "Задачи",
+    icon: <CheckSquareOutlined />,
+    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "TEACHER"],
   },
   {
     key: "/families",

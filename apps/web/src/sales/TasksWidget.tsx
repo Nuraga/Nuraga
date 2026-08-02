@@ -5,7 +5,7 @@ import { PlusOutlined } from "@ant-design/icons";
 import { tasksApi } from "../api/tasks";
 import { staffApi } from "../api/staff";
 import { ApiError } from "../api/client";
-import { getTaskStatus, type Task } from "../api/types";
+import { getDerivedTaskStatus, type Task } from "../api/types";
 
 const STATUS_COLORS: Record<string, string> = { OPEN: "blue", DONE: "green", OVERDUE: "red" };
 const STATUS_LABELS: Record<string, string> = { OPEN: "Открыта", DONE: "Выполнена", OVERDUE: "Просрочена" };
@@ -62,7 +62,7 @@ export default function TasksWidget({ branchId, leadId, familyId }: Props) {
         dataSource={tasks}
         locale={{ emptyText: "Нет задач" }}
         renderItem={(task: Task) => {
-          const status = getTaskStatus(task);
+          const status = getDerivedTaskStatus(task);
           return (
             <List.Item
               actions={[

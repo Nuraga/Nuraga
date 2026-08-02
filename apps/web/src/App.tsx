@@ -27,6 +27,7 @@ import ServicesPage from "./billing/ServicesPage";
 import InvoicingPage from "./billing/InvoicingPage";
 import LeadsPage from "./sales/LeadsPage";
 import LeadDetailPage from "./sales/LeadDetailPage";
+import StaffTasksPage from "./sales/StaffTasksPage";
 import ParentProtectedRoute from "./parent/ParentProtectedRoute";
 import ParentLayout from "./parent/ParentLayout";
 import ParentHomePage from "./parent/ParentHomePage";
@@ -87,6 +88,7 @@ export default function App() {
                     <Route path="/invoicing" element={<InvoicingPage />} />
                     <Route path="/leads" element={<LeadsPage />} />
                     <Route path="/leads/:leadId" element={<LeadDetailPage />} />
+                    <Route path="/tasks" element={<StaffTasksPage />} />
                   </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

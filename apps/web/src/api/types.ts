@@ -700,20 +700,33 @@ export interface LeadActivity {
 
 export interface Task {
   id: string;
+  branchId: string;
   leadId: string | null;
   familyId: string | null;
   description: string;
   dueAt: string;
   assignedToId: string;
+  status: TaskBoardStatus;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type TaskStatus = "OPEN" | "DONE" | "OVERDUE";
+/** Persisted kanban column — drives the staff tasks board. */
+export type TaskBoardStatus = "TODO" | "IN_PROGRESS" | "DONE";
 
-/** OPEN/DONE/OVERDUE is derived, not stored (mirrors the backend's approach). */
-export function getTaskStatus(task: Task): TaskStatus {
+export const TASK_BOARD_STATUSES: TaskBoardStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
+
+export const TASK_BOARD_STATUS_LABELS: Record<TaskBoardStatus, string> = {
+  TODO: "Не начато",
+  IN_PROGRESS: "В работе",
+  DONE: "Выполнено",
+};
+
+export type DerivedTaskStatus = "OPEN" | "DONE" | "OVERDUE";
+
+/** OPEN/DONE/OVERDUE is derived from completedAt/dueAt for the lead/family task widget. */
+export function getDerivedTaskStatus(task: Task): DerivedTaskStatus {
   if (task.completedAt) return "DONE";
   return new Date(task.dueAt).getTime() < Date.now() ? "OVERDUE" : "OPEN";
 }
