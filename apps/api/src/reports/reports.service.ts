@@ -182,4 +182,106 @@ export class ReportsService {
 
     return { branchId, families: rows, totalDebtMinor: rows.reduce((sum, r) => sum + r.debtMinor, 0) };
   }
+
+  /** Начисления за период (ТЗ §9.2) — all invoices generated for the branch in a given month. */
+  async invoicesRegistry(user: AuthenticatedUser, branchId: string, year: number, month: number) {
+    this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      throw new BadRequestException("month must be an integer between 1 and 12");
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: { branchId, year, month },
+      include: { family: { select: { name: true } } },
+      orderBy: { totalMinor: "desc" },
+    });
+
+    const rows = invoices.map((inv) => ({
+      invoiceId: inv.id,
+      familyId: inv.familyId,
+      familyName: inv.family.name,
+      status: inv.status,
+      totalMinor: inv.totalMinor,
+    }));
+
+    return {
+      branchId,
+      year,
+      month,
+      invoices: rows,
+      totalMinor: rows.reduce((sum, r) => sum + r.totalMinor, 0),
+    };
+  }
+
+  /** Оплаты за период (ТЗ §9.2) — all payments recorded for the branch in a given month. */
+  async paymentsRegistry(user: AuthenticatedUser, branchId: string, year: number, month: number) {
+    this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      throw new BadRequestException("month must be an integer between 1 and 12");
+    }
+
+    const from = new Date(Date.UTC(year, month - 1, 1));
+    const to = new Date(Date.UTC(year, month, 1));
+
+    const payments = await this.prisma.payment.findMany({
+      where: { branchId, paidAt: { gte: from, lt: to } },
+      include: { family: { select: { name: true } } },
+      orderBy: { paidAt: "desc" },
+    });
+
+    const rows = payments.map((p) => ({
+      paymentId: p.id,
+      familyId: p.familyId,
+      familyName: p.family.name,
+      amountMinor: p.amountMinor,
+      method: p.method,
+      paidAt: p.paidAt,
+    }));
+
+    const byMethod = rows.reduce<Record<string, number>>((acc, r) => {
+      acc[r.method] = (acc[r.method] ?? 0) + r.amountMinor;
+      return acc;
+    }, {});
+
+    return {
+      branchId,
+      year,
+      month,
+      payments: rows,
+      totalMinor: rows.reduce((sum, r) => sum + r.amountMinor, 0),
+      byMethod,
+    };
+  }
+
+  /** Реестр предоставленных скидок (ТЗ §9.2) — branch-wide, defaults to active discounts only. */
+  async discountsRegistry(user: AuthenticatedUser, branchId: string, activeOnly = true) {
+    this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
+
+    const discounts = await this.prisma.discount.findMany({
+      where: {
+        ...(activeOnly ? { isActive: true } : {}),
+        OR: [{ family: { branchId } }, { child: { family: { branchId } } }],
+      },
+      include: {
+        family: { select: { name: true } },
+        child: { select: { fullName: true, family: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const rows = discounts.map((d) => ({
+      id: d.id,
+      basis: d.basis,
+      kind: d.kind,
+      value: d.value,
+      reason: d.reason,
+      validFrom: d.validFrom,
+      validTo: d.validTo,
+      isActive: d.isActive,
+      familyName: d.family?.name ?? d.child?.family.name ?? "—",
+      childName: d.child?.fullName ?? null,
+    }));
+
+    return { branchId, discounts: rows, total: rows.length };
+  }
 }

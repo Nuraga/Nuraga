@@ -4,8 +4,22 @@ import { DatePicker, Select, Space, Table, Tabs, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { reportsApi } from "../api/reports";
 import { groupsApi } from "../api/groups";
-import { ATTENDANCE_STATUSES, formatMinor } from "../api/types";
+import {
+  ATTENDANCE_STATUSES,
+  DISCOUNT_BASIS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  formatMinor,
+  type InvoiceStatus,
+} from "../api/types";
 import { useBranch } from "../layout/BranchContext";
+
+const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  DRAFT: "Проект",
+  APPROVED: "Утверждён",
+  PARTIALLY_PAID: "Частично оплачен",
+  PAID: "Оплачен",
+  CANCELLED: "Отменён",
+};
 
 const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
   PRESENT: "Присутствовал",
@@ -154,6 +168,116 @@ function DebtTab({ branchId }: { branchId: string }) {
   );
 }
 
+function InvoicesTab({ branchId }: { branchId: string }) {
+  const [month, setMonth] = useState<Dayjs>(dayjs());
+  const { data, isLoading } = useQuery({
+    queryKey: ["reports", "invoices", branchId, month.year(), month.month()],
+    queryFn: () => reportsApi.invoices(branchId, month.year(), month.month() + 1),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+      </Space>
+      {data && (
+        <Typography.Paragraph>
+          Начислено всего: <strong>{formatMinor(data.totalMinor)}</strong>
+        </Typography.Paragraph>
+      )}
+      <Table
+        rowKey="invoiceId"
+        loading={isLoading}
+        dataSource={data?.invoices ?? []}
+        pagination={false}
+        columns={[
+          { title: "Семья", dataIndex: "familyName" },
+          { title: "Статус", dataIndex: "status", render: (s: InvoiceStatus) => INVOICE_STATUS_LABELS[s] },
+          { title: "Сумма", key: "total", render: (_, r) => formatMinor(r.totalMinor) },
+        ]}
+      />
+    </>
+  );
+}
+
+function PaymentsTab({ branchId }: { branchId: string }) {
+  const [month, setMonth] = useState<Dayjs>(dayjs());
+  const { data, isLoading } = useQuery({
+    queryKey: ["reports", "payments", branchId, month.year(), month.month()],
+    queryFn: () => reportsApi.payments(branchId, month.year(), month.month() + 1),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+      </Space>
+      {data && (
+        <Typography.Paragraph>
+          Оплачено всего: <strong>{formatMinor(data.totalMinor)}</strong>
+        </Typography.Paragraph>
+      )}
+      <Table
+        rowKey="paymentId"
+        loading={isLoading}
+        dataSource={data?.payments ?? []}
+        pagination={false}
+        columns={[
+          { title: "Семья", dataIndex: "familyName" },
+          { title: "Дата", dataIndex: "paidAt", render: (d: string) => dayjs(d).format("DD.MM.YYYY") },
+          {
+            title: "Способ",
+            dataIndex: "method",
+            render: (m: keyof typeof PAYMENT_METHOD_LABELS) => PAYMENT_METHOD_LABELS[m],
+          },
+          { title: "Сумма", key: "amount", render: (_, r) => formatMinor(r.amountMinor) },
+        ]}
+      />
+    </>
+  );
+}
+
+function DiscountsTab({ branchId }: { branchId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["reports", "discounts", branchId],
+    queryFn: () => reportsApi.discounts(branchId),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      {data && (
+        <Typography.Paragraph>
+          Активных скидок: <strong>{data.total}</strong>
+        </Typography.Paragraph>
+      )}
+      <Table
+        rowKey="id"
+        loading={isLoading}
+        dataSource={data?.discounts ?? []}
+        pagination={false}
+        columns={[
+          { title: "Семья", dataIndex: "familyName" },
+          { title: "Ребёнок", dataIndex: "childName", render: (c: string | null) => c ?? "—" },
+          {
+            title: "Основание",
+            dataIndex: "basis",
+            render: (b: keyof typeof DISCOUNT_BASIS_LABELS) => DISCOUNT_BASIS_LABELS[b],
+          },
+          {
+            title: "Размер",
+            key: "value",
+            render: (_, r) => (r.kind === "PERCENT" ? `${r.value}%` : formatMinor(r.value)),
+          },
+          { title: "Причина", dataIndex: "reason", render: (r: string | null) => r ?? "—" },
+        ]}
+      />
+    </>
+  );
+}
+
 export default function ReportsPage() {
   const { selectedBranchId } = useBranch();
   const branchId = selectedBranchId!;
@@ -171,6 +295,9 @@ export default function ReportsPage() {
           },
           { key: "waitlist", label: "Очередь", children: <WaitlistTab branchId={branchId} /> },
           { key: "debt", label: "Задолженность", children: <DebtTab branchId={branchId} /> },
+          { key: "invoices", label: "Начисления", children: <InvoicesTab branchId={branchId} /> },
+          { key: "payments", label: "Оплаты", children: <PaymentsTab branchId={branchId} /> },
+          { key: "discounts", label: "Скидки", children: <DiscountsTab branchId={branchId} /> },
         ]}
       />
     </>

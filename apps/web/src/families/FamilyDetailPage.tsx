@@ -30,30 +30,19 @@ import type { RecordPaymentInput } from "../api/payments";
 import { tariffsApi } from "../api/tariffs";
 import {
   DISCOUNT_BASES,
+  DISCOUNT_BASIS_LABELS,
   PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   formatMinor,
   type Contract,
   type Discount,
+  type DiscountBasis,
   type Parent,
+  type PaymentMethod,
   type TrustedPerson,
 } from "../api/types";
 import { ApiError } from "../api/client";
 import { useBranch } from "../layout/BranchContext";
-
-const DISCOUNT_BASIS_LABELS: Record<string, string> = {
-  SECOND_CHILD: "Второй ребёнок",
-  PREPAYMENT: "Предоплата",
-  CORPORATE: "Корпоративная",
-  STAFF: "Сотруднику",
-  SOCIAL: "Льготная",
-  DIRECTOR_DECISION: "Решением директора",
-};
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CASH: "Наличные",
-  CARD_ONSITE: "Картой на месте",
-  BANK_TRANSFER: "Банковский перевод",
-  ONLINE_GATEWAY: "Онлайн-оплата",
-};
 
 export default function FamilyDetailPage() {
   const { familyId = "" } = useParams();
@@ -440,7 +429,7 @@ export default function FamilyDetailPage() {
           pagination={false}
           dataSource={discounts}
           columns={[
-            { title: "Основание", dataIndex: "basis", render: (b: string) => DISCOUNT_BASIS_LABELS[b] },
+            { title: "Основание", dataIndex: "basis", render: (b: DiscountBasis) => DISCOUNT_BASIS_LABELS[b] },
             {
               title: "Размер",
               key: "value",
@@ -498,7 +487,7 @@ export default function FamilyDetailPage() {
           columns={[
             { title: "Дата", dataIndex: "paidAt" },
             { title: "Сумма", key: "amount", render: (_, p) => formatMinor(p.amountMinor) },
-            { title: "Способ", dataIndex: "method", render: (m: string) => PAYMENT_METHOD_LABELS[m] },
+            { title: "Способ", dataIndex: "method", render: (m: PaymentMethod) => PAYMENT_METHOD_LABELS[m] },
           ]}
         />
       </Card>

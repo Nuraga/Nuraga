@@ -362,6 +362,15 @@ export const DISCOUNT_BASES: DiscountBasis[] = [
 ];
 export const DISCOUNT_KINDS: DiscountKind[] = ["PERCENT", "FIXED_AMOUNT"];
 
+export const DISCOUNT_BASIS_LABELS: Record<DiscountBasis, string> = {
+  SECOND_CHILD: "Второй ребёнок",
+  PREPAYMENT: "Предоплата",
+  CORPORATE: "Корпоративная",
+  STAFF: "Сотруднику",
+  SOCIAL: "Льготная",
+  DIRECTOR_DECISION: "Решением директора",
+};
+
 export interface Discount {
   id: string;
   familyId: string | null;
@@ -437,6 +446,13 @@ export type PaymentMethod = "CASH" | "CARD_ONSITE" | "BANK_TRANSFER" | "ONLINE_G
 
 export const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "CARD_ONSITE", "BANK_TRANSFER", "ONLINE_GATEWAY"];
 
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  CASH: "Наличные",
+  CARD_ONSITE: "Картой на месте",
+  BANK_TRANSFER: "Банковский перевод",
+  ONLINE_GATEWAY: "Онлайн-оплата",
+};
+
 export interface Payment {
   id: string;
   familyId: string;
@@ -466,6 +482,59 @@ export interface DebtReport {
   branchId: string;
   families: DebtReportRow[];
   totalDebtMinor: number;
+}
+
+export interface InvoicesReportRow {
+  invoiceId: string;
+  familyId: string;
+  familyName: string;
+  status: InvoiceStatus;
+  totalMinor: number;
+}
+
+export interface InvoicesReport {
+  branchId: string;
+  year: number;
+  month: number;
+  invoices: InvoicesReportRow[];
+  totalMinor: number;
+}
+
+export interface PaymentsReportRow {
+  paymentId: string;
+  familyId: string;
+  familyName: string;
+  amountMinor: number;
+  method: PaymentMethod;
+  paidAt: string;
+}
+
+export interface PaymentsReport {
+  branchId: string;
+  year: number;
+  month: number;
+  payments: PaymentsReportRow[];
+  totalMinor: number;
+  byMethod: Record<string, number>;
+}
+
+export interface DiscountsReportRow {
+  id: string;
+  basis: DiscountBasis;
+  kind: DiscountKind;
+  value: number;
+  reason: string | null;
+  validFrom: string;
+  validTo: string | null;
+  isActive: boolean;
+  familyName: string;
+  childName: string | null;
+}
+
+export interface DiscountsReport {
+  branchId: string;
+  discounts: DiscountsReportRow[];
+  total: number;
 }
 
 export interface GenerateInvoicesResult {

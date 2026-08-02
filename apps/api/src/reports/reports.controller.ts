@@ -37,4 +37,39 @@ export class ReportsController {
   debtRegistry(@CurrentUser() user: AuthenticatedUser, @Param("branchId") branchId: string) {
     return this.reports.debtRegistry(user, branchId);
   }
+
+  @Get("invoices")
+  invoicesRegistry(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Query("year") year?: string,
+    @Query("month") month?: string,
+  ) {
+    if (!year || !month) {
+      throw new BadRequestException("year and month query params are required");
+    }
+    return this.reports.invoicesRegistry(user, branchId, Number(year), Number(month));
+  }
+
+  @Get("payments")
+  paymentsRegistry(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Query("year") year?: string,
+    @Query("month") month?: string,
+  ) {
+    if (!year || !month) {
+      throw new BadRequestException("year and month query params are required");
+    }
+    return this.reports.paymentsRegistry(user, branchId, Number(year), Number(month));
+  }
+
+  @Get("discounts")
+  discountsRegistry(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Query("activeOnly") activeOnly?: string,
+  ) {
+    return this.reports.discountsRegistry(user, branchId, activeOnly !== "false");
+  }
 }
