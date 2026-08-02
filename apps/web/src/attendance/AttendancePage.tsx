@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, DatePicker, Form, Input, Modal, Select, Space, Table, Typography } from "antd";
+import { App, Badge, Button, DatePicker, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
-import { attendanceApi, timesheetsApi } from "../api/attendance";
+import { attendanceApi, timesheetsApi, absenceRequestsApi } from "../api/attendance";
 import type { RosterEntry } from "../api/attendance";
 import { groupsApi } from "../api/groups";
-import type { AttendanceStatus } from "../api/types";
+import { ABSENCE_REQUEST_STATUS_LABELS, type AbsenceRequestStatus, type AttendanceStatus } from "../api/types";
 import { ATTENDANCE_STATUSES } from "../api/types";
 import { ApiError } from "../api/client";
 import { useBranch } from "../layout/BranchContext";
@@ -19,11 +19,15 @@ const STATUS_LABELS: Record<AttendanceStatus, string> = {
   UNMARKED: "Не отмечено",
 };
 
-export default function AttendancePage() {
+const ABSENCE_STATUS_COLORS: Record<AbsenceRequestStatus, string> = {
+  PENDING: "gold",
+  APPROVED: "green",
+  REJECTED: "red",
+};
+
+function AttendanceRosterTab({ branchId }: { branchId: string }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const { selectedBranchId } = useBranch();
-  const branchId = selectedBranchId!;
 
   const { data: groups = [] } = useQuery({
     queryKey: ["groups", branchId],
@@ -81,20 +85,15 @@ export default function AttendancePage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          Посещаемость
-        </Typography.Title>
-        <Space>
-          <Select
-            placeholder="Выберите группу"
-            style={{ width: 240 }}
-            value={groupId}
-            onChange={setGroupId}
-            options={groups.map((g) => ({ value: g.id, label: g.name }))}
-          />
-          <DatePicker value={date} onChange={(d) => d && setDate(d)} allowClear={false} />
-        </Space>
+      <Space style={{ marginBottom: 16 }}>
+        <Select
+          placeholder="Выберите группу"
+          style={{ width: 240 }}
+          value={groupId}
+          onChange={setGroupId}
+          options={groups.map((g) => ({ value: g.id, label: g.name }))}
+        />
+        <DatePicker value={date} onChange={(d) => d && setDate(d)} allowClear={false} />
       </Space>
 
       <Table
@@ -144,6 +143,129 @@ export default function AttendancePage() {
           </Form.Item>
         </Form>
       </Modal>
+    </>
+  );
+}
+
+function AbsenceRequestsTab({ branchId }: { branchId: string }) {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [rejectForm] = Form.useForm();
+
+  const { data: requests = [], isLoading } = useQuery({
+    queryKey: ["absence-requests", branchId],
+    queryFn: () => absenceRequestsApi.list(branchId),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["absence-requests", branchId] });
+
+  const approve = useMutation({
+    mutationFn: (id: string) => absenceRequestsApi.approve(branchId, id),
+    onSuccess: () => {
+      invalidate();
+      message.success("Заявка одобрена, посещаемость проставлена");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
+  const reject = useMutation({
+    mutationFn: (comment?: string) => absenceRequestsApi.reject(branchId, rejecting!, comment),
+    onSuccess: () => {
+      invalidate();
+      setRejecting(null);
+      message.success("Заявка отклонена");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
+  return (
+    <>
+      <Table
+        rowKey="id"
+        loading={isLoading}
+        dataSource={requests}
+        locale={{ emptyText: "Заявок нет" }}
+        columns={[
+          { title: "Ребёнок", key: "child", render: (_, r) => r.child?.fullName ?? "—" },
+          { title: "От", key: "parent", render: (_, r) => r.submittedByParent?.fullName ?? "—" },
+          {
+            title: "Период",
+            key: "period",
+            render: (_, r) =>
+              `${new Date(r.dateFrom).toLocaleDateString("ru-RU")} – ${new Date(r.dateTo).toLocaleDateString("ru-RU")}`,
+          },
+          { title: "Причина", dataIndex: "reason", render: (v: string | null) => v ?? "—" },
+          {
+            title: "Статус",
+            dataIndex: "status",
+            render: (s: AbsenceRequestStatus) => (
+              <Tag color={ABSENCE_STATUS_COLORS[s]}>{ABSENCE_REQUEST_STATUS_LABELS[s]}</Tag>
+            ),
+          },
+          {
+            title: "",
+            key: "actions",
+            render: (_, r) =>
+              r.status === "PENDING" && (
+                <Space>
+                  <Button size="small" type="primary" loading={approve.isPending} onClick={() => approve.mutate(r.id)}>
+                    Подтвердить
+                  </Button>
+                  <Button size="small" danger onClick={() => setRejecting(r.id)}>
+                    Отклонить
+                  </Button>
+                </Space>
+              ),
+          },
+        ]}
+      />
+
+      <Modal
+        title="Отклонить заявку"
+        open={Boolean(rejecting)}
+        onCancel={() => setRejecting(null)}
+        onOk={() => rejectForm.submit()}
+        confirmLoading={reject.isPending}
+        destroyOnClose
+      >
+        <Form form={rejectForm} layout="vertical" onFinish={(v) => reject.mutate(v.comment)}>
+          <Form.Item label="Комментарий" name="comment">
+            <Input.TextArea rows={2} placeholder="Необязательно" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
+export default function AttendancePage() {
+  const { selectedBranchId } = useBranch();
+  const branchId = selectedBranchId!;
+
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ["absence-requests", branchId, "PENDING"],
+    queryFn: () => absenceRequestsApi.list(branchId, "PENDING"),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      <Typography.Title level={3}>Посещаемость</Typography.Title>
+      <Tabs
+        items={[
+          { key: "roster", label: "Отметка", children: <AttendanceRosterTab branchId={branchId} /> },
+          {
+            key: "absence-requests",
+            label: (
+              <Badge count={pendingRequests.length} size="small" offset={[8, -2]}>
+                <span>Заявки на отсутствие</span>
+              </Badge>
+            ),
+            children: <AbsenceRequestsTab branchId={branchId} />,
+          },
+        ]}
+      />
     </>
   );
 }

@@ -27,6 +27,12 @@ import ServicesPage from "./billing/ServicesPage";
 import InvoicingPage from "./billing/InvoicingPage";
 import LeadsPage from "./sales/LeadsPage";
 import LeadDetailPage from "./sales/LeadDetailPage";
+import ParentProtectedRoute from "./parent/ParentProtectedRoute";
+import ParentLayout from "./parent/ParentLayout";
+import ParentHomePage from "./parent/ParentHomePage";
+import ParentBillingPage from "./parent/ParentBillingPage";
+import ParentAttendancePage from "./parent/ParentAttendancePage";
+import ParentProfilePage from "./parent/ParentProfilePage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -38,38 +44,54 @@ export default function App() {
       <AntdApp>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <BranchProvider>
-              <BrowserRouter>
-                <Routes>
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route element={<ProtectedRoute />}>
-                    <Route path="/setup-2fa" element={<TwoFactorSetupPage />} />
-                    <Route element={<AppLayout />}>
-                      <Route path="/" element={<HomePage />} />
-                      <Route path="/branches" element={<BranchesPage />} />
-                      <Route path="/groups" element={<GroupsPage />} />
-                      <Route path="/staff" element={<StaffPage />} />
-                      <Route path="/dictionaries" element={<DictionariesPage />} />
-                      <Route path="/families" element={<FamiliesPage />} />
-                      <Route path="/families/:familyId" element={<FamilyDetailPage />} />
-                      <Route path="/children" element={<ChildrenPage />} />
-                      <Route path="/children/:childId" element={<ChildDetailPage />} />
-                      <Route path="/waitlist" element={<WaitlistPage />} />
-                      <Route path="/attendance" element={<AttendancePage />} />
-                      <Route path="/timesheets" element={<TimesheetsPage />} />
-                      <Route path="/import" element={<ImportPage />} />
-                      <Route path="/reports" element={<ReportsPage />} />
-                      <Route path="/tariffs" element={<TariffsPage />} />
-                      <Route path="/services" element={<ServicesPage />} />
-                      <Route path="/invoicing" element={<InvoicingPage />} />
-                      <Route path="/leads" element={<LeadsPage />} />
-                      <Route path="/leads/:leadId" element={<LeadDetailPage />} />
-                    </Route>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+
+                {/* Родительский кабинет — вне BranchProvider: у родителя нет
+                    ролей в филиале, он скоупится на свою семью через JWT. */}
+                <Route path="/parent" element={<ParentProtectedRoute />}>
+                  <Route element={<ParentLayout />}>
+                    <Route index element={<ParentHomePage />} />
+                    <Route path="billing" element={<ParentBillingPage />} />
+                    <Route path="attendance" element={<ParentAttendancePage />} />
+                    <Route path="profile" element={<ParentProfilePage />} />
                   </Route>
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </BrowserRouter>
-            </BranchProvider>
+                </Route>
+
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/setup-2fa" element={<TwoFactorSetupPage />} />
+                  <Route
+                    element={
+                      <BranchProvider>
+                        <AppLayout />
+                      </BranchProvider>
+                    }
+                  >
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/branches" element={<BranchesPage />} />
+                    <Route path="/groups" element={<GroupsPage />} />
+                    <Route path="/staff" element={<StaffPage />} />
+                    <Route path="/dictionaries" element={<DictionariesPage />} />
+                    <Route path="/families" element={<FamiliesPage />} />
+                    <Route path="/families/:familyId" element={<FamilyDetailPage />} />
+                    <Route path="/children" element={<ChildrenPage />} />
+                    <Route path="/children/:childId" element={<ChildDetailPage />} />
+                    <Route path="/waitlist" element={<WaitlistPage />} />
+                    <Route path="/attendance" element={<AttendancePage />} />
+                    <Route path="/timesheets" element={<TimesheetsPage />} />
+                    <Route path="/import" element={<ImportPage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/tariffs" element={<TariffsPage />} />
+                    <Route path="/services" element={<ServicesPage />} />
+                    <Route path="/invoicing" element={<InvoicingPage />} />
+                    <Route path="/leads" element={<LeadsPage />} />
+                    <Route path="/leads/:leadId" element={<LeadDetailPage />} />
+                  </Route>
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
           </AuthProvider>
         </QueryClientProvider>
       </AntdApp>

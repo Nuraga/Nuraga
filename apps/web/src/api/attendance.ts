@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Attendance, AttendanceStatus, Child, TimesheetPeriod } from "./types";
+import type { AbsenceRequest, AbsenceRequestStatus, Attendance, AttendanceStatus, Child, TimesheetPeriod } from "./types";
 
 export interface MarkAttendanceInput {
   date: string;
@@ -26,6 +26,15 @@ export const attendanceApi = {
     api.get<RosterEntry[]>(`/branches/${branchId}/groups/${groupId}/attendance`, { date }),
   history: (branchId: string, childId: string, from?: string, to?: string) =>
     api.get<Attendance[]>(`/branches/${branchId}/children/${childId}/attendance`, { from, to }),
+};
+
+export const absenceRequestsApi = {
+  list: (branchId: string, status?: AbsenceRequestStatus) =>
+    api.get<AbsenceRequest[]>(`/branches/${branchId}/absence-requests`, { status }),
+  approve: (branchId: string, id: string) =>
+    api.post<AbsenceRequest>(`/branches/${branchId}/absence-requests/${id}/approve`),
+  reject: (branchId: string, id: string, comment?: string) =>
+    api.post<AbsenceRequest>(`/branches/${branchId}/absence-requests/${id}/reject`, { comment }),
 };
 
 export const timesheetsApi = {

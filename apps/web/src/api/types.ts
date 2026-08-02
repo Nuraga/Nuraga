@@ -7,6 +7,11 @@ export interface BranchGrant {
   role: Role;
 }
 
+export interface ParentProfile {
+  id: string;
+  familyId: string;
+}
+
 export interface CurrentUser {
   id: string;
   email: string | null;
@@ -14,6 +19,7 @@ export interface CurrentUser {
   fullName: string;
   grants: BranchGrant[];
   hasNetworkAccess: boolean;
+  parentProfile: ParentProfile | null;
 }
 
 export interface Branch {
@@ -472,6 +478,30 @@ export interface FamilyBalance {
   totalPaidMinor: number;
   totalInvoicedMinor: number;
   balanceMinor: number;
+}
+
+export type AbsenceRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export const ABSENCE_REQUEST_STATUS_LABELS: Record<AbsenceRequestStatus, string> = {
+  PENDING: "На рассмотрении",
+  APPROVED: "Одобрена",
+  REJECTED: "Отклонена",
+};
+
+export interface AbsenceRequest {
+  id: string;
+  childId: string;
+  dateFrom: string;
+  dateTo: string;
+  reason: string | null;
+  status: AbsenceRequestStatus;
+  submittedByParentId: string;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  reviewComment: string | null;
+  createdAt: string;
+  child?: { id: string; fullName: string };
+  submittedByParent?: { id: string; fullName: string };
 }
 
 export interface DebtReportRow {

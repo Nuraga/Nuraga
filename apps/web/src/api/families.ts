@@ -15,6 +15,12 @@ export interface CreateTrustedPersonInput {
   expiresAt?: string;
 }
 
+export interface CreateParentAccountInput {
+  password: string;
+  email?: string;
+  phone?: string;
+}
+
 export const familiesApi = {
   list: (branchId: string, search?: string) =>
     api.get<Family[]>(`/branches/${branchId}/families`, { search }),
@@ -30,6 +36,12 @@ export const familiesApi = {
     api.patch<Parent>(`/branches/${branchId}/families/${familyId}/parents/${parentId}`, dto),
   removeParent: (branchId: string, familyId: string, parentId: string) =>
     api.delete<void>(`/branches/${branchId}/families/${familyId}/parents/${parentId}`),
+  provisionParentAccount: (
+    branchId: string,
+    familyId: string,
+    parentId: string,
+    dto: CreateParentAccountInput,
+  ) => api.post<Parent>(`/branches/${branchId}/families/${familyId}/parents/${parentId}/account`, dto),
 
   addTrustedPerson: (branchId: string, familyId: string, dto: CreateTrustedPersonInput) =>
     api.post<TrustedPerson>(`/branches/${branchId}/families/${familyId}/trusted-persons`, dto),

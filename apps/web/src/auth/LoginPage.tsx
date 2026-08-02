@@ -22,7 +22,11 @@ export default function LoginPage() {
         setStep("code");
         return;
       }
-      navigate(result.totpSetupRequired ? "/setup-2fa" : "/", { replace: true });
+      if (result.isParent) {
+        navigate("/parent", { replace: true });
+      } else {
+        navigate(result.totpSetupRequired ? "/setup-2fa" : "/", { replace: true });
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось войти");
     } finally {
@@ -35,8 +39,8 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await verifyTwoFactor(mfaToken, values.code);
-      navigate("/", { replace: true });
+      const { isParent } = await verifyTwoFactor(mfaToken, values.code);
+      navigate(isParent ? "/parent" : "/", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Неверный код");
     } finally {

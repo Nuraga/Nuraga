@@ -190,6 +190,20 @@ export default function FamilyDetailPage() {
     onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
   });
 
+  const [accountModal, setAccountModal] = useState<{ parent: Parent } | null>(null);
+  const [accountForm] = Form.useForm();
+
+  const provisionAccount = useMutation({
+    mutationFn: (values: { password: string; email?: string; phone?: string }) =>
+      familiesApi.provisionParentAccount(branchId, familyId, accountModal!.parent.id, values),
+    onSuccess: () => {
+      invalidate();
+      setAccountModal(null);
+      message.success("Аккаунт создан — сообщите родителю логин и пароль");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
   const saveTrusted = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
       trustedModal?.editing
@@ -253,10 +267,31 @@ export default function FamilyDetailPage() {
             { title: "Телефон", dataIndex: "phone" },
             { title: "Email", dataIndex: "email" },
             {
+              title: "Аккаунт",
+              key: "account",
+              render: (_, parent: Parent) =>
+                parent.userId ? (
+                  <Tag color="green">Есть доступ</Tag>
+                ) : (
+                  <Tag>Нет доступа</Tag>
+                ),
+            },
+            {
               title: "",
               key: "actions",
               render: (_, parent: Parent) => (
                 <Space>
+                  {!parent.userId && (
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        accountForm.resetFields();
+                        setAccountModal({ parent });
+                      }}
+                    >
+                      Создать аккаунт
+                    </Button>
+                  )}
                   <Button
                     size="small"
                     onClick={() => {
@@ -518,6 +553,50 @@ export default function FamilyDetailPage() {
             <Input />
           </Form.Item>
           <Form.Item label="Email" name="email">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Создать аккаунт: ${accountModal?.parent.fullName ?? ""}`}
+        open={Boolean(accountModal)}
+        onCancel={() => setAccountModal(null)}
+        onOk={() => accountForm.submit()}
+        confirmLoading={provisionAccount.isPending}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary">
+          Логином станет email или телефон родителя (уже указанные в карточке, если не переопределить
+          здесь). Пароль нужно будет сообщить родителю отдельно.
+        </Typography.Paragraph>
+        <Form
+          form={accountForm}
+          layout="vertical"
+          onFinish={(values) => provisionAccount.mutate(values)}
+        >
+          <Form.Item
+            label="Пароль"
+            name="password"
+            rules={[
+              { required: true, message: "Укажите пароль" },
+              { min: 6, message: "Не менее 6 символов" },
+            ]}
+          >
+            <Input.Password />
+          </Form.Item>
+          <Form.Item
+            label="Email (если не указан в карточке)"
+            name="email"
+            initialValue={accountModal?.parent.email ?? undefined}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label="Телефон (если не указан в карточке)"
+            name="phone"
+            initialValue={accountModal?.parent.phone ?? undefined}
+          >
             <Input />
           </Form.Item>
         </Form>

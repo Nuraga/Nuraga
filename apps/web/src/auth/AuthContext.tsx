@@ -6,13 +6,13 @@ import type { CurrentUser } from "../api/types";
 
 type LoginOutcome =
   | { status: "mfa_required"; mfaToken: string }
-  | { status: "ok"; totpSetupRequired: boolean };
+  | { status: "ok"; totpSetupRequired: boolean; isParent: boolean };
 
 interface AuthContextValue {
   user: CurrentUser | null;
   status: "loading" | "authenticated" | "unauthenticated";
   login: (identifier: string, password: string) => Promise<LoginOutcome>;
-  verifyTwoFactor: (mfaToken: string, code: string) => Promise<void>;
+  verifyTwoFactor: (mfaToken: string, code: string) => Promise<{ isParent: boolean }>;
   logout: () => Promise<void>;
 }
 
@@ -22,15 +22,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState<AuthContextValue["status"]>("loading");
 
-  const loadCurrentUser = useCallback(async () => {
+  const loadCurrentUser = useCallback(async (): Promise<CurrentUser | null> => {
     try {
       const me = await authApi.me();
       setUser(me);
       setStatus("authenticated");
+      return me;
     } catch {
       clearTokens();
       setUser(null);
       setStatus("unauthenticated");
+      return null;
     }
   }, []);
 
@@ -66,8 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { status: "mfa_required", mfaToken: result.mfaToken };
       }
       setTokens(result);
-      await loadCurrentUser();
-      return { status: "ok", totpSetupRequired: result.totpSetupRequired };
+      const me = await loadCurrentUser();
+      return { status: "ok", totpSetupRequired: result.totpSetupRequired, isParent: Boolean(me?.parentProfile) };
     },
     [loadCurrentUser],
   );
@@ -76,7 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (mfaToken: string, code: string) => {
       const pair = await authApi.verify2fa(mfaToken, code);
       setTokens(pair);
-      await loadCurrentUser();
+      const me = await loadCurrentUser();
+      return { isParent: Boolean(me?.parentProfile) };
     },
     [loadCurrentUser],
   );
