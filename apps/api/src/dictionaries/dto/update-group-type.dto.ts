@@ -1,0 +1,22 @@
+import { IsBoolean, IsInt, IsOptional, IsString, Min, MinLength } from "class-validator";
+
+export class UpdateGroupTypeDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  name?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minAgeMonths?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAgeMonths?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}

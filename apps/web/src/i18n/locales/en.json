@@ -1,0 +1,6 @@
+{
+  "app.title": "Kindergarten CRM",
+  "health.checking": "Checking server connection...",
+  "health.ok": "Server is reachable",
+  "health.error": "Server unreachable"
+}

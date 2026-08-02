@@ -1,0 +1,853 @@
+// Stage 1 MVP schema — core records module only.
+// Billing (tariff/contract/invoice/payment), leads, messaging, and consent
+// entities are intentionally not modeled yet (Stage 2-4 of the TRD roadmap).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Access control
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPERADMIN
+  OWNER
+  BRANCH_MANAGER
+  MANAGER
+  ACCOUNTANT
+  TEACHER
+  PARENT
+}
+
+model User {
+  id                String   @id @default(uuid())
+  email             String?  @unique
+  phone             String?  @unique
+  passwordHash      String
+  fullName          String
+  totpSecret        String?
+  totpEnabled       Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  failedLoginCount  Int      @default(0)
+  lockedUntil       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branchRoles       UserBranchRole[]
+  parentProfile     Parent?
+  staffProfile      Staff?
+  refreshTokens     RefreshToken[]
+  auditLogEntries   AuditLog[]
+
+  @@map("user")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_token")
+}
+
+// One row per (user, branch, role) grant. A user can hold different roles in
+// different branches; effective permissions are the union of all grants.
+model UserBranchRole {
+  id       String @id @default(uuid())
+  userId   String
+  branchId String
+  role     Role
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId, role])
+  @@index([branchId])
+  @@map("user_branch_role")
+}
+
+// ---------------------------------------------------------------------------
+// Branches, groups
+// ---------------------------------------------------------------------------
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  locale    String   @default("ru")
+  timezone  String   @default("UTC")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userRoles        UserBranchRole[]
+  groups           Group[]
+  families         Family[]
+  waitlistEntries  WaitlistEntry[]
+  timesheetPeriods TimesheetPeriod[]
+  staff            Staff[]
+  tariffs          Tariff[]
+  services         Service[]
+  invoices         Invoice[]
+  payments         Payment[]
+  leads            Lead[]
+
+  @@map("branch")
+}
+
+model GroupType {
+  id            String  @id @default(uuid())
+  name          String  @unique
+  minAgeMonths  Int
+  maxAgeMonths  Int
+  isActive      Boolean @default(true)
+
+  groups Group[]
+
+  @@map("group_type")
+}
+
+model Group {
+  id                String   @id @default(uuid())
+  branchId          String
+  groupTypeId       String
+  name              String
+  plannedCapacity   Int
+  maxCapacity       Int
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  groupType GroupType @relation(fields: [groupTypeId], references: [id])
+
+  children        Child[]
+  waitlistEntries WaitlistEntry[]
+  attendances     Attendance[]
+  staff           StaffGroup[]
+
+  @@index([branchId])
+  @@map("group")
+}
+
+// ---------------------------------------------------------------------------
+// Families, children
+// ---------------------------------------------------------------------------
+
+model Family {
+  id        String   @id @default(uuid())
+  branchId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  parents        Parent[]
+  children       Child[]
+  trustedPersons TrustedPerson[]
+  discounts      Discount[]
+  contracts      Contract[]
+  invoices       Invoice[]
+  payments       Payment[]
+  tasks          Task[]
+
+  @@index([branchId])
+  @@map("family")
+}
+
+model Parent {
+  id             String  @id @default(uuid())
+  familyId       String
+  userId         String? @unique
+  fullName       String
+  relationship   String // "мать", "отец", "опекун", ...
+  contactPriority Int    @default(1)
+  phone          String?
+  email          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([familyId])
+  @@map("parent")
+}
+
+model TrustedPerson {
+  id           String    @id @default(uuid())
+  familyId     String
+  fullName     String
+  documentInfo String?
+  photoKey     String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@map("trusted_person")
+}
+
+enum ChildStatus {
+  WAITLIST
+  ENROLLED
+  SUSPENDED
+  DISCHARGED
+}
+
+model Child {
+  id             String      @id @default(uuid())
+  familyId       String
+  groupId        String?
+  fullName       String
+  birthDate      DateTime
+  sex            String?
+  photoKey       String?
+  status         ChildStatus @default(WAITLIST)
+  enrolledAt     DateTime?
+  suspendedAt    DateTime?
+  discharedAt    DateTime?
+  dischargeReasonId String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  family          Family           @relation(fields: [familyId], references: [id])
+  group           Group?           @relation(fields: [groupId], references: [id])
+  dischargeReason DischargeReason? @relation(fields: [dischargeReasonId], references: [id])
+
+  medical         ChildMedical?
+  documents       Document[]
+  attendances     Attendance[]
+  waitlistEntries WaitlistEntry[]
+  history         ChildHistoryEntry[]
+  serviceEnrollments ServiceEnrollment[]
+  discounts       Discount[]
+  contracts       Contract[]
+  invoiceLines    InvoiceLine[]
+
+  @@index([familyId])
+  @@index([groupId])
+  @@map("child")
+}
+
+// Sensitive medical fields — encrypted at rest at the application layer
+// (see EncryptionService). Teachers only ever see `criticalInfo`.
+model ChildMedical {
+  id                String  @id @default(uuid())
+  childId           String  @unique
+  allergiesEnc      String? // encrypted
+  chronicEnc        String? // encrypted
+  activityLimitsEnc String? // encrypted
+  doctorContactEnc  String? // encrypted
+  criticalInfo      String? // plain text, teacher-visible summary (allergies/diet only)
+  updatedAt         DateTime @updatedAt
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("child_medical")
+}
+
+// Effective-dated transfers, suspensions, discharges — append-only.
+model ChildHistoryEntry {
+  id           String   @id @default(uuid())
+  childId      String
+  type         String // "transfer" | "suspend" | "resume" | "discharge" | "tariff_change"
+  fromGroupId  String?
+  toGroupId    String?
+  effectiveAt  DateTime
+  reason       String?
+  actorUserId  String
+  createdAt    DateTime @default(now())
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId])
+  @@map("child_history_entry")
+}
+
+enum DocumentOwnerType {
+  CHILD
+  STAFF
+}
+
+model DocumentType {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  hasExpiry Boolean @default(false)
+  isActive Boolean @default(true)
+
+  documents Document[]
+
+  @@map("document_type")
+}
+
+model Document {
+  id             String            @id @default(uuid())
+  ownerType      DocumentOwnerType
+  ownerId        String
+  documentTypeId String
+  fileKey        String
+  fileName       String
+  mimeType       String
+  expiresAt      DateTime?
+  uploadedById   String
+  createdAt      DateTime          @default(now())
+
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id])
+  child        Child?       @relation(fields: [ownerId], references: [id], map: "document_child_fk")
+
+  @@index([ownerType, ownerId])
+  @@index([expiresAt])
+  @@map("document")
+}
+
+model DischargeReason {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  isActive Boolean @default(true)
+
+  children Child[]
+
+  @@map("discharge_reason")
+}
+
+model WaitlistEntry {
+  id         String   @id @default(uuid())
+  branchId   String
+  groupId    String
+  childId    String?
+  leadId     String?
+  leadName   String?
+  priority   Int      @default(0)
+  queuedAt   DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  group  Group  @relation(fields: [groupId], references: [id])
+  child  Child? @relation(fields: [childId], references: [id])
+  lead   Lead?  @relation(fields: [leadId], references: [id])
+
+  @@index([branchId, groupId])
+  @@map("waitlist_entry")
+}
+
+// ---------------------------------------------------------------------------
+// Attendance & timesheets
+// ---------------------------------------------------------------------------
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT_SICK
+  ABSENT_EXCUSED
+  VACATION
+  LATE
+  UNMARKED
+}
+
+model Attendance {
+  id             String            @id @default(uuid())
+  childId        String
+  groupId        String
+  date           DateTime          @db.Date
+  status         AttendanceStatus  @default(UNMARKED)
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  pickedUpById   String? // Parent.id or TrustedPerson.id
+  pickedUpByType String? // "parent" | "trusted_person"
+  markedById     String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  child Child @relation(fields: [childId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+
+  @@unique([childId, date])
+  @@index([groupId, date])
+  @@map("attendance")
+}
+
+enum TimesheetPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+model TimesheetPeriod {
+  id         String                 @id @default(uuid())
+  branchId   String
+  month      Int
+  year       Int
+  status     TimesheetPeriodStatus  @default(OPEN)
+  closedById String?
+  closedAt   DateTime?
+  createdAt  DateTime               @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  corrections TimesheetCorrection[]
+
+  @@unique([branchId, year, month])
+  @@map("timesheet_period")
+}
+
+// Required to edit attendance after a period is closed (invariant #4, TRD 11.3).
+model TimesheetCorrection {
+  id           String   @id @default(uuid())
+  periodId     String
+  attendanceId String
+  reason       String
+  actorUserId  String
+  createdAt    DateTime @default(now())
+
+  period TimesheetPeriod @relation(fields: [periodId], references: [id])
+
+  @@map("timesheet_correction")
+}
+
+// ---------------------------------------------------------------------------
+// Staff (basic level, per TRD module M6)
+// ---------------------------------------------------------------------------
+
+model Staff {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  branchId  String
+  position  String
+  hiredAt   DateTime?
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+  groups StaffGroup[]
+
+  @@map("staff")
+}
+
+model StaffGroup {
+  staffId String
+  groupId String
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, groupId])
+  @@map("staff_group")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — append-only, never updated/deleted from the app layer.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entity     String
+  entityId   String
+  action     String // "create" | "update" | "delete"
+  oldValue   Json?
+  newValue   Json?
+  actorId    String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// Billing (Этап 2 ТЗ, раздел 6) — tariffs, services, discounts, contracts,
+// invoicing, payments. Money is always integer minor units (тиын/cents);
+// floating point is forbidden here per ТЗ §11.1. Approved invoices and
+// recorded payments are immutable — corrections happen via new adjustment
+// rows, never in-place edits (ТЗ §11.1, §6.4).
+// ---------------------------------------------------------------------------
+
+enum TariffType {
+  MONTHLY_FULL
+  MONTHLY_HALF_DAY
+  HOURLY
+  PAY_AS_YOU_GO
+  DUTY_GROUP
+}
+
+enum RecurrencePeriod {
+  MONTHLY
+  ONE_TIME
+  PER_VISIT
+}
+
+enum RecalcRule {
+  NONE
+  MEALS_ONLY
+  FULL_DAY_WITH_THRESHOLD
+}
+
+// A row is one immutable tariff *version* (ТЗ §6.1: "тарифы версионируются").
+// Changing a price means creating a new Tariff row with its own validFrom
+// and closing the previous version's validTo — never editing baseAmountMinor
+// on a version a Contract already points to, since that would silently
+// change the basis for already-generated invoices.
+model Tariff {
+  id                  String            @id @default(uuid())
+  branchId            String? // null = сеть целиком (network-wide tariff)
+  name                String
+  type                TariffType
+  baseAmountMinor     Int
+  currency            String            @default("KZT")
+  recurrence          RecurrencePeriod
+  recalcRule          RecalcRule        @default(NONE)
+  recalcThresholdDays Int? // e.g. "recalculated from the 4th sick day" (ТЗ §6.1)
+  includesDescription String? // "что включено": meals, nap, base activities
+  validFrom           DateTime
+  validTo             DateTime?
+  isActive            Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  branch    Branch?    @relation(fields: [branchId], references: [id])
+  contracts Contract[]
+
+  @@index([branchId])
+  @@map("tariff")
+}
+
+model Service {
+  id           String   @id @default(uuid())
+  branchId     String
+  name         String
+  priceMinor   Int
+  scheduleInfo String? // free text (e.g. "Пн/Ср/Пт, 16:00") — no full scheduling module yet
+  capacity     Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  branch      Branch               @relation(fields: [branchId], references: [id])
+  enrollments ServiceEnrollment[]
+  invoiceLines InvoiceLine[]
+
+  @@index([branchId])
+  @@map("service")
+}
+
+model ServiceEnrollment {
+  id        String    @id @default(uuid())
+  childId   String
+  serviceId String
+  startDate DateTime
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  child   Child   @relation(fields: [childId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([childId])
+  @@index([serviceId])
+  @@map("service_enrollment")
+}
+
+enum DiscountBasis {
+  SECOND_CHILD
+  PREPAYMENT
+  CORPORATE
+  STAFF
+  SOCIAL
+  DIRECTOR_DECISION
+}
+
+enum DiscountKind {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+// Family-wide (familyId set) or single-child (childId set) — exactly one of
+// the two, enforced at the service layer. DIRECTOR_DECISION requires a
+// mandatory reason and Owner/Branch Manager approval (ТЗ §6.3 — flagged as
+// "типичная зона финансовых утечек", so it gets its own audit visibility).
+model Discount {
+  id           String        @id @default(uuid())
+  familyId     String?
+  childId      String?
+  basis        DiscountBasis
+  kind         DiscountKind
+  value        Int // percent (0-100) for PERCENT, minor units for FIXED_AMOUNT
+  reason       String?
+  validFrom    DateTime
+  validTo      DateTime?
+  approvedById String
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+
+  family Family? @relation(fields: [familyId], references: [id])
+  child  Child?  @relation(fields: [childId], references: [id])
+
+  @@index([familyId])
+  @@index([childId])
+  @@map("discount")
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+  EXPIRED
+}
+
+model Contract {
+  id        String         @id @default(uuid())
+  familyId  String
+  childId   String
+  tariffId  String
+  number    String         @unique
+  startDate DateTime
+  endDate   DateTime?
+  status    ContractStatus @default(DRAFT)
+  fileKey   String? // scanned signed document, same object-storage pattern as Document
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id])
+  child  Child  @relation(fields: [childId], references: [id])
+  tariff Tariff @relation(fields: [tariffId], references: [id])
+
+  @@index([familyId])
+  @@index([childId])
+  @@map("contract")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+// One per (family, branch, year, month). Draft while the month-close review
+// is in progress; APPROVED freezes it (ТЗ §6.4: "после утверждения счёт
+// неизменяем — правки только через корректирующий документ").
+model Invoice {
+  id           String        @id @default(uuid())
+  familyId     String
+  branchId     String
+  year         Int
+  month        Int
+  status       InvoiceStatus @default(DRAFT)
+  totalMinor   Int           @default(0)
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  lines       InvoiceLine[]
+  allocations PaymentAllocation[]
+
+  @@unique([familyId, year, month])
+  @@index([branchId, year, month])
+  @@map("invoice")
+}
+
+enum InvoiceLineType {
+  TARIFF
+  SERVICE
+  FINE
+  RECALC
+  DISCOUNT
+  MANUAL_ADJUSTMENT
+  PREVIOUS_BALANCE
+}
+
+// amountMinor is signed — negative for discounts/recalculations/credits.
+// ruleRef captures *why* the line exists (which tariff/discount/attendance
+// data produced it) so a parent-facing breakdown is always explainable
+// (ТЗ §6: "по каждой строке счёта родитель должен видеть, откуда взялась сумма").
+model InvoiceLine {
+  id          String          @id @default(uuid())
+  invoiceId   String
+  childId     String?
+  serviceId   String?
+  type        InvoiceLineType
+  description String
+  amountMinor Int
+  ruleRef     String?
+  createdAt   DateTime        @default(now())
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  child   Child?   @relation(fields: [childId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_line")
+}
+
+enum PaymentMethod {
+  CASH
+  CARD_ONSITE
+  BANK_TRANSFER
+  ONLINE_GATEWAY
+}
+
+// Immutable once created (ТЗ §11.1) — refunds are a separate operation, not
+// implemented as an edit to this row (out of scope for the first Этап 2 pass).
+model Payment {
+  id           String        @id @default(uuid())
+  familyId     String
+  branchId     String
+  amountMinor  Int
+  method       PaymentMethod
+  paidAt       DateTime
+  externalRef  String?
+  recordedById String
+  createdAt    DateTime      @default(now())
+
+  family Family @relation(fields: [familyId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  allocations PaymentAllocation[]
+
+  @@index([familyId])
+  @@map("payment")
+}
+
+// Разнесение платежа: one payment can cover several invoices (FIFO), one
+// invoice can be covered by several payments. Sum of a payment's allocations
+// never exceeds its amountMinor (ТЗ §11.3 invariant #1).
+model PaymentAllocation {
+  id          String @id @default(uuid())
+  paymentId   String
+  invoiceId   String
+  amountMinor Int
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@map("payment_allocation")
+}
+
+// ---------------------------------------------------------------------------
+// Sales / leads (Этап 3, MVP slice — ТЗ §3)
+// ---------------------------------------------------------------------------
+
+model LeadSource {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  leads Lead[]
+
+  @@map("lead_source")
+}
+
+model LeadRejectionReason {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  leads Lead[]
+
+  @@map("lead_rejection_reason")
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  TOUR_SCHEDULED
+  TOUR_DONE
+  TRIAL_DAY
+  CONTRACT_SIGNING
+  ENROLLED
+  REJECTED
+  WAITLISTED
+}
+
+// stageEnteredAt tracks current-stage duration; full stage history is
+// reconstructable from AuditLog diffs if/when a funnel-duration report is
+// built (ТЗ §3.5) — no dedicated history table for this MVP pass.
+model Lead {
+  id                     String    @id @default(uuid())
+  branchId               String
+  parentFullName         String
+  parentPhone            String
+  parentPhoneNormalized  String // digits-only, computed on write — cross-branch dedup key (ТЗ §3.1)
+  parentEmail            String?
+  childFullName          String?
+  childBirthDate         DateTime?
+  targetDate             DateTime?
+  sourceId               String?
+  stage                  LeadStage @default(NEW)
+  stageEnteredAt         DateTime  @default(now())
+  rejectionReasonId      String?
+  rejectionComment       String?
+  responsibleUserId      String
+  utmSource              String?
+  utmMedium              String?
+  utmCampaign            String?
+  convertedFamilyId      String? // set by POST /leads/:id/convert, plain scalar (no relation, matches Discount.approvedById idiom)
+  convertedChildId       String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  branch          Branch               @relation(fields: [branchId], references: [id])
+  source          LeadSource?          @relation(fields: [sourceId], references: [id])
+  rejectionReason LeadRejectionReason? @relation(fields: [rejectionReasonId], references: [id])
+
+  activities      LeadActivity[]
+  tasks           Task[]
+  waitlistEntries WaitlistEntry[]
+
+  @@index([branchId, stage])
+  @@index([parentPhoneNormalized])
+  @@map("lead")
+}
+
+model LeadActivity {
+  id        String   @id @default(uuid())
+  leadId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_activity")
+}
+
+// Polymorphic: exactly one of leadId/familyId is set (app-level check,
+// same idiom as Discount.familyId/childId).
+model Task {
+  id           String    @id @default(uuid())
+  leadId       String?
+  familyId     String?
+  description  String
+  dueAt        DateTime
+  assignedToId String
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([familyId])
+  @@index([assignedToId])
+  @@map("task")
+}
