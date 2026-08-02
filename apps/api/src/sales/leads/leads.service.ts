@@ -25,7 +25,7 @@ const ATTENTION_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
  * country code, so "+7 701 123-45-67" and "8 (701) 123 45 67" dedupe as the
  * same number (both become "77011234567").
  */
-function normalizePhone(phone: string): string {
+export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   return digits.length === 11 && digits.startsWith("8") ? `7${digits.slice(1)}` : digits;
 }
