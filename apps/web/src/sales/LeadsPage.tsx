@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Segmented, Select, Space, Typography } from "antd";
+import { Badge, Button, Segmented, Select, Space, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { leadsApi } from "../api/leads";
 import { leadSourcesApi } from "../api/dictionaries";
@@ -8,13 +8,16 @@ import { staffApi } from "../api/staff";
 import { useBranch } from "../layout/BranchContext";
 import LeadsBoard from "./LeadsBoard";
 import LeadsTable from "./LeadsTable";
+import LeadsAttentionList from "./LeadsAttentionList";
 import CreateLeadModal from "./CreateLeadModal";
+
+type View = "board" | "table" | "attention";
 
 export default function LeadsPage() {
   const { selectedBranchId } = useBranch();
   const branchId = selectedBranchId!;
 
-  const [view, setView] = useState<"board" | "table">("board");
+  const [view, setView] = useState<View>("board");
   const [sourceId, setSourceId] = useState<string | undefined>();
   const [responsibleUserId, setResponsibleUserId] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
@@ -22,6 +25,11 @@ export default function LeadsPage() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["leads", branchId, sourceId, responsibleUserId],
     queryFn: () => leadsApi.list(branchId, { sourceId, responsibleUserId }),
+    enabled: Boolean(branchId),
+  });
+  const { data: attentionLeads = [], isLoading: attentionLoading } = useQuery({
+    queryKey: ["leads", branchId, "needing-attention"],
+    queryFn: () => leadsApi.listNeedingAttention(branchId),
     enabled: Boolean(branchId),
   });
   const { data: sources = [] } = useQuery({ queryKey: ["lead-sources"], queryFn: leadSourcesApi.list });
@@ -60,10 +68,18 @@ export default function LeadsPage() {
           />
           <Segmented
             value={view}
-            onChange={(v) => setView(v as "board" | "table")}
+            onChange={(v) => setView(v as View)}
             options={[
               { label: "Воронка", value: "board" },
               { label: "Таблица", value: "table" },
+              {
+                label: (
+                  <Badge count={attentionLeads.length} size="small" offset={[8, -2]}>
+                    <span>Без внимания</span>
+                  </Badge>
+                ),
+                value: "attention",
+              },
             ]}
           />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
@@ -72,10 +88,10 @@ export default function LeadsPage() {
         </Space>
       </Space>
 
-      {view === "board" ? (
-        <LeadsBoard branchId={branchId} leads={leads} isLoading={isLoading} />
-      ) : (
-        <LeadsTable leads={leads} isLoading={isLoading} />
+      {view === "board" && <LeadsBoard branchId={branchId} leads={leads} isLoading={isLoading} />}
+      {view === "table" && <LeadsTable leads={leads} isLoading={isLoading} />}
+      {view === "attention" && (
+        <LeadsAttentionList leads={attentionLeads} isLoading={attentionLoading} />
       )}
 
       <CreateLeadModal
