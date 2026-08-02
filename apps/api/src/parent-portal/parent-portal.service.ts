@@ -122,6 +122,24 @@ export class ParentPortalService {
     });
   }
 
+  /** ТЗ §7.1 "Главная: ...что в меню" — today's menu for the family's branch. No conflict data — that's for staff, not parents. */
+  async todayMenu(user: AuthenticatedUser) {
+    const familyId = this.parentAccess.assertFamilyId(user);
+    const family = await this.prisma.family.findUniqueOrThrow({
+      where: { id: familyId },
+      select: { branchId: true },
+    });
+
+    const today = toDateOnly(new Date().toISOString());
+    const items = await this.prisma.menuItem.findMany({
+      where: { branchId: family.branchId, date: today },
+      include: { dish: { select: { name: true } } },
+      orderBy: { mealType: "asc" },
+    });
+
+    return items.map((item) => ({ mealType: item.mealType, dishName: item.dish.name }));
+  }
+
   private async assertChildInFamily(familyId: string, childId: string): Promise<void> {
     const child = await this.prisma.child.findUnique({ where: { id: childId } });
     if (!child || child.familyId !== familyId) {

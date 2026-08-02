@@ -20,6 +20,7 @@ import { DocumentsService } from "./documents.service";
 import { CreateChildDto } from "./dto/create-child.dto";
 import { UpdateChildDto } from "./dto/update-child.dto";
 import { UpsertChildMedicalDto } from "./dto/upsert-child-medical.dto";
+import { SetChildAllergensDto } from "./dto/set-child-allergens.dto";
 import { UploadDocumentDto } from "./dto/upload-document.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/access/current-user.decorator";
@@ -111,6 +112,16 @@ export class ChildrenController {
     @Body() dto: UpsertChildMedicalDto,
   ) {
     return this.medical.upsert(user, branchId, id, dto);
+  }
+
+  @Put("children/:id/allergens")
+  setAllergens(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("id") id: string,
+    @Body() dto: SetChildAllergensDto,
+  ) {
+    return this.medical.setAllergens(user, branchId, id, dto.allergenIds);
   }
 
   @Get("children/:id/documents")

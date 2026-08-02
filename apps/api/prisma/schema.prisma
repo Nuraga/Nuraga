@@ -106,6 +106,7 @@ model Branch {
   tasks            Task[]
   devices              Device[]
   staffAttendanceEvents StaffAttendanceEvent[]
+  menuItems             MenuItem[]
 
   @@map("branch")
 }
@@ -243,6 +244,7 @@ model Child {
   contracts       Contract[]
   invoiceLines    InvoiceLine[]
   absenceRequests AbsenceRequest[]
+  allergens       ChildAllergen[]
 
   @@index([familyId])
   @@index([groupId])
@@ -264,6 +266,79 @@ model ChildMedical {
   child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
 
   @@map("child_medical")
+}
+
+// ---------------------------------------------------------------------------
+// Menu & nutrition (TRD §7.4) — structured allergy tags live here, separate
+// from ChildMedical's encrypted narrative fields: these are low-sensitivity
+// tags meant to be cross-referenced against dishes by a wide staff audience
+// (including TEACHER), not the narrow-audience encrypted medical detail.
+// ---------------------------------------------------------------------------
+
+model Allergen {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  dishes         DishAllergen[]
+  childAllergens ChildAllergen[]
+
+  @@map("allergen")
+}
+
+model ChildAllergen {
+  childId    String
+  allergenId String
+
+  child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  allergen Allergen @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@id([childId, allergenId])
+  @@map("child_allergen")
+}
+
+model Dish {
+  id       String  @id @default(uuid())
+  name     String
+  isActive Boolean @default(true)
+
+  allergens DishAllergen[]
+  menuItems MenuItem[]
+
+  @@map("dish")
+}
+
+model DishAllergen {
+  dishId     String
+  allergenId String
+
+  dish     Dish     @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  allergen Allergen @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@id([dishId, allergenId])
+  @@map("dish_allergen")
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  AFTERNOON_SNACK
+}
+
+// One row = one dish within one meal sitting on one day at one branch; a
+// sitting can include several dishes (soup + main + compote).
+model MenuItem {
+  id       String   @id @default(uuid())
+  branchId String
+  date     DateTime @db.Date
+  mealType MealType
+  dishId   String
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  dish   Dish   @relation(fields: [dishId], references: [id])
+
+  @@index([branchId, date])
+  @@map("menu_item")
 }
 
 // Effective-dated transfers, suspensions, discharges — append-only.

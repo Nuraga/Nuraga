@@ -26,8 +26,11 @@ describe("ParentPortalService", () => {
   beforeEach(() => {
     prisma = {
       family: {
-        findUniqueOrThrow: jest.fn(() => Promise.resolve({ id: "f1", name: "Ивановы", parents: [], children: [] })),
+        findUniqueOrThrow: jest.fn(() =>
+          Promise.resolve({ id: "f1", name: "Ивановы", branchId: "b1", parents: [], children: [] }),
+        ),
       },
+      menuItem: { findMany: jest.fn(() => Promise.resolve([])) },
       invoice: {
         findMany: jest.fn(() => Promise.resolve([])),
         aggregate: jest.fn(() => Promise.resolve({ _sum: { totalMinor: 0 } })),
@@ -118,5 +121,26 @@ describe("ParentPortalService", () => {
     expect(prisma.absenceRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { child: { familyId: "f1" } } }),
     );
+  });
+
+  it("rejects a staff (non-parent) session from reading today's menu", async () => {
+    await expect(service.todayMenu(staff)).rejects.toThrow(ForbiddenException);
+  });
+
+  it("todayMenu resolves the family's branch and returns dish names without conflict data", async () => {
+    prisma.menuItem.findMany.mockResolvedValue([
+      { mealType: "BREAKFAST", dish: { name: "Каша" } },
+      { mealType: "LUNCH", dish: { name: "Суп" } },
+    ]);
+
+    const menu = await service.todayMenu(parent);
+
+    expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ branchId: "b1" }) }),
+    );
+    expect(menu).toEqual([
+      { mealType: "BREAKFAST", dishName: "Каша" },
+      { mealType: "LUNCH", dishName: "Суп" },
+    ]);
   });
 });

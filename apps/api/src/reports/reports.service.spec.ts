@@ -38,7 +38,7 @@ describe("ReportsService", () => {
         findUnique: jest.fn((args: any) => Promise.resolve({ id: args.where.id, branchId })),
       },
       attendance: { findMany: jest.fn(() => Promise.resolve([])) },
-      child: { findMany: jest.fn(() => Promise.resolve([])) },
+      child: { findMany: jest.fn(() => Promise.resolve([])), groupBy: jest.fn(() => Promise.resolve([])) },
       waitlistEntry: { groupBy: jest.fn(() => Promise.resolve([])) },
       family: { findMany: jest.fn(() => Promise.resolve([])) },
       payment: {
@@ -234,6 +234,42 @@ describe("ReportsService", () => {
       expect(prisma.discount.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ isActive: true }) }),
       );
+    });
+  });
+
+  describe("portionsToday", () => {
+    it("rejects a Teacher — same audience as the other reports", async () => {
+      await expect(service.portionsToday(teacher, branchId, "2026-08-03")).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it("counts enrolled children minus known absences for that date, per group", async () => {
+      prisma.child.groupBy.mockResolvedValue([
+        { groupId: "g1", _count: { _all: 8 } },
+        { groupId: "g2", _count: { _all: 5 } },
+      ]);
+      prisma.attendance.findMany.mockResolvedValue([
+        { groupId: "g1" },
+        { groupId: "g1" },
+      ]);
+
+      const report = await service.portionsToday(manager, branchId, "2026-08-03");
+
+      expect(report.groups).toEqual([
+        { groupId: "g1", groupName: "Младшая", portionsNeeded: 6 },
+        { groupId: "g2", groupName: "Старшая", portionsNeeded: 5 },
+      ]);
+      expect(report.total).toBe(11);
+    });
+
+    it("still counts enrolled children when no Attendance rows exist yet for that date", async () => {
+      prisma.child.groupBy.mockResolvedValue([{ groupId: "g1", _count: { _all: 8 } }]);
+      prisma.attendance.findMany.mockResolvedValue([]);
+
+      const report = await service.portionsToday(manager, branchId, "2026-08-03");
+
+      expect(report.groups.find((g: any) => g.groupId === "g1")?.portionsNeeded).toBe(8);
     });
   });
 });

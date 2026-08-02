@@ -17,9 +17,27 @@ import { UpsertChildMedicalDto } from "./dto/upsert-child-medical.dto";
 // is granted to the same three roles for now.
 const MEDICAL_FULL_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
 
+export interface AllergenTag {
+  id: string;
+  name: string;
+}
+
+// allergens is structured (Allergen dictionary, via ChildAllergen) and
+// deliberately visible at BOTH levels — unlike the encrypted narrative
+// fields, these are low-sensitivity tags the menu module cross-references
+// against dishes, and a teacher needs them to read the menu's allergy
+// warnings for their own group.
 export type ChildMedicalView =
-  | { level: "full"; allergies: string | null; chronic: string | null; activityLimits: string | null; doctorContact: string | null; criticalInfo: string | null }
-  | { level: "critical_only"; criticalInfo: string | null };
+  | {
+      level: "full";
+      allergies: string | null;
+      chronic: string | null;
+      activityLimits: string | null;
+      doctorContact: string | null;
+      criticalInfo: string | null;
+      allergens: AllergenTag[];
+    }
+  | { level: "critical_only"; criticalInfo: string | null; allergens: AllergenTag[] };
 
 @Injectable()
 export class ChildMedicalService {
@@ -38,6 +56,7 @@ export class ChildMedicalService {
   ): Promise<ChildMedicalView> {
     const child = await this.getOwnedChildOrThrow(branchId, childId);
     const record = await this.prisma.childMedical.findUnique({ where: { childId } });
+    const allergens = await this.getAllergenTags(childId);
 
     if (this.branchScope.hasAnyRoleInBranch(user, MEDICAL_FULL_ROLES, branchId)) {
       return {
@@ -47,17 +66,54 @@ export class ChildMedicalService {
         activityLimits: this.encryption.decryptNullable(record?.activityLimitsEnc),
         doctorContact: this.encryption.decryptNullable(record?.doctorContactEnc),
         criticalInfo: record?.criticalInfo ?? null,
+        allergens,
       };
     }
 
     if (this.branchScope.hasRoleInBranch(user, "TEACHER", branchId) && child.groupId) {
       const assigned = await this.teacherScope.isAssignedToGroup(user.id, branchId, child.groupId);
       if (assigned) {
-        return { level: "critical_only", criticalInfo: record?.criticalInfo ?? null };
+        return { level: "critical_only", criticalInfo: record?.criticalInfo ?? null, allergens };
       }
     }
 
     throw new ForbiddenException("No access to this child's medical data");
+  }
+
+  /** Replaces the full set of structured allergy tags for a child (menu cross-referencing). */
+  async setAllergens(
+    user: AuthenticatedUser,
+    branchId: string,
+    childId: string,
+    allergenIds: string[],
+  ): Promise<AllergenTag[]> {
+    this.branchScope.assertRoleInBranch(user, MEDICAL_FULL_ROLES, branchId);
+    await this.getOwnedChildOrThrow(branchId, childId);
+
+    await this.prisma.$transaction([
+      this.prisma.childAllergen.deleteMany({ where: { childId } }),
+      this.prisma.childAllergen.createMany({
+        data: allergenIds.map((allergenId) => ({ childId, allergenId })),
+      }),
+    ]);
+
+    await this.audit.record({
+      entity: "child_medical",
+      entityId: childId,
+      action: "update",
+      newValue: { allergenIds },
+      actorId: user.id,
+    });
+
+    return this.getAllergenTags(childId);
+  }
+
+  private async getAllergenTags(childId: string): Promise<AllergenTag[]> {
+    const rows = await this.prisma.childAllergen.findMany({
+      where: { childId },
+      include: { allergen: { select: { id: true, name: true } } },
+    });
+    return rows.map((row) => row.allergen);
   }
 
   async upsert(

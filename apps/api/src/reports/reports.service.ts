@@ -284,4 +284,48 @@ export class ReportsService {
 
     return { branchId, discounts: rows, total: rows.length };
   }
+
+  /**
+   * Порции на день (ТЗ §7.4) — enrolled children per group, minus those with
+   * a known absence for that date. Uses enrollment (not existing Attendance
+   * rows) as the baseline, since for a day nobody has checked in yet there
+   * are no Attendance rows at all — only approved AbsenceRequests (already
+   * materialized into ABSENT_SICK/ABSENT_EXCUSED/VACATION rows by
+   * AbsenceRequestsService.approve) should reduce the count.
+   */
+  async portionsToday(user: AuthenticatedUser, branchId: string, date: string) {
+    this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
+    const day = new Date(date.slice(0, 10));
+
+    const groups = await this.prisma.group.findMany({ where: { branchId }, orderBy: { name: "asc" } });
+    const groupIds = groups.map((g) => g.id);
+
+    const enrolledCounts = await this.prisma.child.groupBy({
+      by: ["groupId"],
+      where: { groupId: { in: groupIds }, status: "ENROLLED" },
+      _count: { _all: true },
+    });
+    const enrolledByGroup = new Map(enrolledCounts.map((c) => [c.groupId, c._count._all]));
+
+    const excusedAttendances = await this.prisma.attendance.findMany({
+      where: {
+        date: day,
+        groupId: { in: groupIds },
+        status: { in: ["ABSENT_SICK", "ABSENT_EXCUSED", "VACATION"] },
+      },
+      select: { groupId: true },
+    });
+    const excusedByGroup = new Map<string, number>();
+    for (const a of excusedAttendances) {
+      excusedByGroup.set(a.groupId, (excusedByGroup.get(a.groupId) ?? 0) + 1);
+    }
+
+    const rows = groups.map((g) => {
+      const enrolled = enrolledByGroup.get(g.id) ?? 0;
+      const excused = excusedByGroup.get(g.id) ?? 0;
+      return { groupId: g.id, groupName: g.name, portionsNeeded: Math.max(enrolled - excused, 0) };
+    });
+
+    return { branchId, date, groups: rows, total: rows.reduce((sum, r) => sum + r.portionsNeeded, 0) };
+  }
 }

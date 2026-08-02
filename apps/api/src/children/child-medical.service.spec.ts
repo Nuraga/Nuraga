@@ -47,6 +47,12 @@ describe("ChildMedicalService", () => {
         findUnique: jest.fn(() => Promise.resolve(null)),
         upsert: jest.fn((args: any) => Promise.resolve({ childId, ...args.create })),
       },
+      childAllergen: {
+        findMany: jest.fn(() => Promise.resolve([])),
+        deleteMany: jest.fn(() => Promise.resolve({ count: 0 })),
+        createMany: jest.fn(() => Promise.resolve({ count: 0 })),
+      },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     teacherScope = {
       getAssignedGroupIds: jest.fn(() => Promise.resolve(["g1"])),
@@ -89,6 +95,7 @@ describe("ChildMedicalService", () => {
       activityLimits: null,
       doctorContact: null,
       criticalInfo: "Аллергия на орехи",
+      allergens: [],
     });
   });
 
@@ -100,7 +107,20 @@ describe("ChildMedicalService", () => {
     });
 
     const result = await service.getForUser(teacherAssigned, branchId, childId);
-    expect(result).toEqual({ level: "critical_only", criticalInfo: "Аллергия на орехи" });
+    expect(result).toEqual({ level: "critical_only", criticalInfo: "Аллергия на орехи", allergens: [] });
+  });
+
+  it("includes structured allergen tags at both access levels", async () => {
+    prisma.childMedical.findUnique.mockResolvedValue({ childId, criticalInfo: "x" });
+    prisma.childAllergen.findMany.mockResolvedValue([
+      { childId, allergenId: "a1", allergen: { id: "a1", name: "Орехи" } },
+    ]);
+
+    const full = await service.getForUser(manager, branchId, childId);
+    expect(full.allergens).toEqual([{ id: "a1", name: "Орехи" }]);
+
+    const critical = await service.getForUser(teacherAssigned, branchId, childId);
+    expect(critical.allergens).toEqual([{ id: "a1", name: "Орехи" }]);
   });
 
   it("denies a Teacher not assigned to the child's group", async () => {
@@ -127,5 +147,37 @@ describe("ChildMedicalService", () => {
     const auditCall = audit.record.mock.calls[0][0];
     expect(JSON.stringify(auditCall)).not.toContain("орехи");
     expect(auditCall.newValue).toEqual({ fieldsUpdated: ["allergies", "criticalInfo"] });
+  });
+
+  describe("setAllergens", () => {
+    it("rejects Accountant/Teacher writes", async () => {
+      await expect(service.setAllergens(accountant, branchId, childId, ["a1"])).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(
+        service.setAllergens(teacherAssigned, branchId, childId, ["a1"]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("replaces the child's allergen set and returns the new tags", async () => {
+      prisma.childAllergen.findMany.mockResolvedValue([
+        { childId, allergenId: "a1", allergen: { id: "a1", name: "Орехи" } },
+      ]);
+
+      const result = await service.setAllergens(manager, branchId, childId, ["a1"]);
+
+      expect(prisma.childAllergen.deleteMany).toHaveBeenCalledWith({ where: { childId } });
+      expect(prisma.childAllergen.createMany).toHaveBeenCalledWith({
+        data: [{ childId, allergenId: "a1" }],
+      });
+      expect(result).toEqual([{ id: "a1", name: "Орехи" }]);
+    });
+
+    it("never writes allergen names into the audit log, only ids", async () => {
+      await service.setAllergens(manager, branchId, childId, ["a1", "a2"]);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ entity: "child_medical", newValue: { allergenIds: ["a1", "a2"] } }),
+      );
+    });
   });
 });

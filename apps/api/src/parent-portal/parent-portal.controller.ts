@@ -56,4 +56,9 @@ export class ParentPortalController {
   listAbsenceRequests(@CurrentUser() user: AuthenticatedUser) {
     return this.parentPortal.listAbsenceRequests(user);
   }
+
+  @Get("menu/today")
+  todayMenu(@CurrentUser() user: AuthenticatedUser) {
+    return this.parentPortal.todayMenu(user);
+  }
 }

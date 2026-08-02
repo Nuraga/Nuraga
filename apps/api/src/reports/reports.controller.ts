@@ -72,4 +72,14 @@ export class ReportsController {
   ) {
     return this.reports.discountsRegistry(user, branchId, activeOnly !== "false");
   }
+
+  @Get("portions")
+  portionsToday(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Query("date") date?: string,
+  ) {
+    if (!date) throw new BadRequestException("date query param is required");
+    return this.reports.portionsToday(user, branchId, date);
+  }
 }

@@ -30,6 +30,7 @@ import { TasksModule } from "./sales/tasks/tasks.module";
 import { ParentPortalModule } from "./parent-portal/parent-portal.module";
 import { DevicesModule } from "./devices/devices.module";
 import { StaffAttendanceModule } from "./staff-attendance/staff-attendance.module";
+import { MenuModule } from "./menu/menu.module";
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { StaffAttendanceModule } from "./staff-attendance/staff-attendance.modul
     ParentPortalModule,
     DevicesModule,
     StaffAttendanceModule,
+    MenuModule,
   ],
   providers: [
     // RolesGuard is applied network-wide; routes without @Roles(...) pass
