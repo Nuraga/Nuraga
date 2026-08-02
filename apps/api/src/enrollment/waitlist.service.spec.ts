@@ -22,23 +22,35 @@ describe("WaitlistService", () => {
   const manager = user({ grants: [{ branchId, role: "MANAGER" }] });
 
   let prisma: any;
+  let tx: any;
   let childAccess: { assertWriteAccess: jest.Mock };
   let audit: { record: jest.Mock };
   let service: WaitlistService;
 
   beforeEach(() => {
+    tx = {
+      waitlistEntry: {
+        create: jest.fn((args: any) => Promise.resolve({ id: "w1", ...args.data })),
+        delete: jest.fn(() => Promise.resolve()),
+      },
+      lead: { update: jest.fn((args: any) => Promise.resolve({ id: args.where.id, ...args.data })) },
+    };
     prisma = {
       group: { findUnique: jest.fn(() => Promise.resolve({ id: groupId, branchId })) },
       child: {
         findUnique: jest.fn(() => Promise.resolve({ id: "c1", familyId: "f1", status: "WAITLIST" })),
       },
       family: { findUnique: jest.fn(() => Promise.resolve({ id: "f1", branchId })) },
+      lead: {
+        findUnique: jest.fn(() => Promise.resolve({ id: "lead1", branchId, stage: "CONTACTED" })),
+      },
       waitlistEntry: {
         create: jest.fn((args: any) => Promise.resolve({ id: "w1", ...args.data })),
         findMany: jest.fn(() => Promise.resolve([])),
         findUnique: jest.fn(() => Promise.resolve({ id: "w1", branchId, groupId })),
         delete: jest.fn(() => Promise.resolve()),
       },
+      $transaction: jest.fn((fn: any) => fn(tx)),
     };
     childAccess = { assertWriteAccess: jest.fn() };
     audit = { record: jest.fn(() => Promise.resolve()) };
@@ -75,6 +87,39 @@ describe("WaitlistService", () => {
     prisma.waitlistEntry.findUnique.mockResolvedValue({ id: "w1", branchId, groupId: "other-group" });
     await expect(service.remove(manager, branchId, groupId, "w1")).rejects.toThrow(
       NotFoundException,
+    );
+  });
+
+  it("rejects when neither childId nor leadId is given", async () => {
+    await expect(service.add(manager, branchId, groupId, {})).rejects.toThrow(BadRequestException);
+  });
+
+  it("rejects when both childId and leadId are given", async () => {
+    await expect(
+      service.add(manager, branchId, groupId, { childId: "c1", leadId: "lead1" }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it("queues a lead directly and flips its stage to WAITLISTED", async () => {
+    const entry = await service.add(manager, branchId, groupId, { leadId: "lead1" });
+    expect(entry).toMatchObject({ branchId, groupId, leadId: "lead1" });
+    expect(tx.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "lead1" }, data: expect.objectContaining({ stage: "WAITLISTED" }) }),
+    );
+  });
+
+  it("rejects queueing a lead already in a terminal stage", async () => {
+    prisma.lead.findUnique.mockResolvedValue({ id: "lead1", branchId, stage: "ENROLLED" });
+    await expect(service.add(manager, branchId, groupId, { leadId: "lead1" })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it("reverts a lead's stage to CONTACTED when its waitlist entry is removed", async () => {
+    prisma.waitlistEntry.findUnique.mockResolvedValue({ id: "w1", branchId, groupId, leadId: "lead1" });
+    await service.remove(manager, branchId, groupId, "w1");
+    expect(tx.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "lead1" }, data: expect.objectContaining({ stage: "CONTACTED" }) }),
     );
   });
 });

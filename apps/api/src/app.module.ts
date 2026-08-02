@@ -25,6 +25,8 @@ import { FamiliesModule } from "./families/families.module";
 import { ChildrenModule } from "./children/children.module";
 import { EnrollmentModule } from "./enrollment/enrollment.module";
 import { AttendanceModule } from "./attendance/attendance.module";
+import { LeadsModule } from "./sales/leads/leads.module";
+import { TasksModule } from "./sales/tasks/tasks.module";
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { AttendanceModule } from "./attendance/attendance.module";
     ChildrenModule,
     EnrollmentModule,
     AttendanceModule,
+    LeadsModule,
+    TasksModule,
   ],
   providers: [
     // RolesGuard is applied network-wide; routes without @Roles(...) pass
