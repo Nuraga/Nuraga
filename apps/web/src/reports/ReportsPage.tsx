@@ -278,6 +278,38 @@ function DiscountsTab({ branchId }: { branchId: string }) {
   );
 }
 
+function PortionsTab({ branchId }: { branchId: string }) {
+  const [date, setDate] = useState<Dayjs>(dayjs());
+  const { data, isLoading } = useQuery({
+    queryKey: ["reports", "portions", branchId, date.format("YYYY-MM-DD")],
+    queryFn: () => reportsApi.portions(branchId, date.format("YYYY-MM-DD")),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <DatePicker value={date} onChange={(d) => d && setDate(d)} allowClear={false} />
+      </Space>
+      {data && (
+        <Typography.Paragraph>
+          Всего порций на день: <strong>{data.total}</strong>
+        </Typography.Paragraph>
+      )}
+      <Table
+        rowKey="groupId"
+        loading={isLoading}
+        dataSource={data?.groups ?? []}
+        pagination={false}
+        columns={[
+          { title: "Группа", dataIndex: "groupName" },
+          { title: "Порций нужно", dataIndex: "portionsNeeded" },
+        ]}
+      />
+    </>
+  );
+}
+
 export default function ReportsPage() {
   const { selectedBranchId } = useBranch();
   const branchId = selectedBranchId!;
@@ -298,6 +330,7 @@ export default function ReportsPage() {
           { key: "invoices", label: "Начисления", children: <InvoicesTab branchId={branchId} /> },
           { key: "payments", label: "Оплаты", children: <PaymentsTab branchId={branchId} /> },
           { key: "discounts", label: "Скидки", children: <DiscountsTab branchId={branchId} /> },
+          { key: "portions", label: "Порции", children: <PortionsTab branchId={branchId} /> },
         ]}
       />
     </>

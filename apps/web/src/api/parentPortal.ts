@@ -1,10 +1,15 @@
 import { api } from "./client";
-import type { AbsenceRequest, Attendance, Family, FamilyBalance, Invoice, Payment } from "./types";
+import type { AbsenceRequest, Attendance, Family, FamilyBalance, Invoice, MealType, Payment } from "./types";
 
 export interface CreateAbsenceRequestInput {
   dateFrom: string;
   dateTo: string;
   reason?: string;
+}
+
+export interface TodayMenuItem {
+  mealType: MealType;
+  dishName: string;
 }
 
 // No branchId anywhere here — a parent session is scoped to exactly one
@@ -19,4 +24,5 @@ export const parentPortalApi = {
   createAbsenceRequest: (childId: string, dto: CreateAbsenceRequestInput) =>
     api.post<AbsenceRequest>(`/parent/children/${childId}/absence-requests`, dto),
   listAbsenceRequests: () => api.get<AbsenceRequest[]>("/parent/absence-requests"),
+  todayMenu: () => api.get<TodayMenuItem[]>("/parent/menu/today"),
 };

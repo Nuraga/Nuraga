@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,7 +21,7 @@ import type { UploadFile } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import { childrenApi } from "../api/children";
 import { groupsApi } from "../api/groups";
-import { dischargeReasonsApi, documentTypesApi } from "../api/dictionaries";
+import { allergensApi, dischargeReasonsApi, documentTypesApi } from "../api/dictionaries";
 import { enrollmentApi } from "../api/enrollment";
 import type { ChildStatus } from "../api/types";
 import { ApiError } from "../api/client";
@@ -73,6 +73,10 @@ export default function ChildDetailPage() {
   const { data: documentTypes = [] } = useQuery({
     queryKey: ["document-types"],
     queryFn: documentTypesApi.list,
+  });
+  const { data: allergenOptions = [] } = useQuery({
+    queryKey: ["allergens"],
+    queryFn: allergensApi.list,
   });
 
   const invalidateChild = () => queryClient.invalidateQueries({ queryKey: ["children", branchId, childId] });
@@ -152,6 +156,22 @@ export default function ChildDetailPage() {
     onError,
   });
 
+  // Structured allergy tags are saved separately from the narrative medical
+  // fields above — a different endpoint, not part of UpsertChildMedicalDto.
+  const [allergenIds, setAllergenIds] = useState<string[]>([]);
+  const medical = medicalQuery.data;
+  useEffect(() => {
+    if (medical) setAllergenIds(medical.allergens.map((a) => a.id));
+  }, [medical]);
+  const saveAllergens = useMutation({
+    mutationFn: (ids: string[]) => childrenApi.setAllergens(branchId, childId, ids),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["children", branchId, childId, "medical"] });
+      message.success("Аллергены сохранены");
+    },
+    onError,
+  });
+
   const [uploadModal, setUploadModal] = useState(false);
   const [uploadForm] = Form.useForm();
   const uploadDoc = useMutation({
@@ -178,8 +198,6 @@ export default function ChildDetailPage() {
 
   const child = childQuery.data;
   if (childQuery.isLoading || !child) return <Typography.Text>Загрузка...</Typography.Text>;
-
-  const medical = medicalQuery.data;
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -293,6 +311,36 @@ export default function ChildDetailPage() {
           <Typography.Paragraph>
             <strong>Важная информация:</strong> {medical?.criticalInfo || "не указана"}
           </Typography.Paragraph>
+        )}
+
+        {medical?.level === "full" && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
+            <Typography.Text strong>Аллергены (для сопоставления с меню)</Typography.Text>
+            <div style={{ marginTop: 8, marginBottom: 8 }}>
+              <Select
+                mode="multiple"
+                style={{ width: "100%" }}
+                value={allergenIds}
+                onChange={setAllergenIds}
+                options={allergenOptions.map((a) => ({ value: a.id, label: a.name }))}
+                placeholder="Не выбрано"
+              />
+            </div>
+            <Button size="small" onClick={() => saveAllergens.mutate(allergenIds)} loading={saveAllergens.isPending}>
+              Сохранить аллергены
+            </Button>
+          </div>
+        )}
+
+        {medical?.level === "critical_only" && medical.allergens.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <Typography.Text strong>Аллергены: </Typography.Text>
+            {medical.allergens.map((a) => (
+              <Tag key={a.id} color="orange">
+                {a.name}
+              </Tag>
+            ))}
+          </div>
         )}
       </Card>
 

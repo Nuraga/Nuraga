@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Descriptions, List, Skeleton, Tag, Typography } from "antd";
 import { useNavigate } from "react-router-dom";
 import { parentPortalApi } from "../api/parentPortal";
-import { formatMinor } from "../api/types";
+import { MEAL_TYPE_LABELS, formatMinor } from "../api/types";
 
 const CHILD_STATUS_LABELS: Record<string, string> = {
   WAITLIST: "В очереди",
@@ -20,6 +20,10 @@ export default function ParentHomePage() {
   const { data: balance, isLoading: balanceLoading } = useQuery({
     queryKey: ["parent", "balance"],
     queryFn: parentPortalApi.balance,
+  });
+  const { data: menu = [], isLoading: menuLoading } = useQuery({
+    queryKey: ["parent", "menu", "today"],
+    queryFn: parentPortalApi.todayMenu,
   });
 
   if (familyLoading) return <Skeleton active />;
@@ -39,6 +43,30 @@ export default function ParentHomePage() {
             </Typography.Text>
           </Descriptions.Item>
         </Descriptions>
+      </Card>
+
+      <Card title="Меню на сегодня" style={{ marginBottom: 16 }} loading={menuLoading}>
+        {menu.length === 0 ? (
+          <Typography.Text type="secondary">Меню ещё не опубликовано</Typography.Text>
+        ) : (
+          <List
+            size="small"
+            dataSource={Object.entries(
+              menu.reduce<Record<string, string[]>>((acc, item) => {
+                (acc[item.mealType] ??= []).push(item.dishName);
+                return acc;
+              }, {}),
+            )}
+            renderItem={([mealType, dishNames]) => (
+              <List.Item>
+                <Typography.Text type="secondary" style={{ minWidth: 90, display: "inline-block" }}>
+                  {MEAL_TYPE_LABELS[mealType as keyof typeof MEAL_TYPE_LABELS]}
+                </Typography.Text>
+                <Typography.Text>{dishNames.join(", ")}</Typography.Text>
+              </List.Item>
+            )}
+          />
+        )}
       </Card>
 
       <Card title="Дети">

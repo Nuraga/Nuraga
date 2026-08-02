@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  AllergenTag,
   Child,
   ChildDocument,
   ChildHistoryEntry,
@@ -36,6 +37,8 @@ export const childrenApi = {
     api.get<ChildMedicalView>(`/branches/${branchId}/children/${id}/medical`),
   upsertMedical: (branchId: string, id: string, dto: UpsertChildMedicalInput) =>
     api.put<ChildMedicalView>(`/branches/${branchId}/children/${id}/medical`, dto),
+  setAllergens: (branchId: string, id: string, allergenIds: string[]) =>
+    api.put<AllergenTag[]>(`/branches/${branchId}/children/${id}/allergens`, { allergenIds }),
 
   listDocuments: (branchId: string, id: string) =>
     api.get<ChildDocument[]>(`/branches/${branchId}/children/${id}/documents`),

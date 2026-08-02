@@ -6,6 +6,7 @@ import type {
   InvoicesReport,
   OccupancyReport,
   PaymentsReport,
+  PortionsReport,
   WaitlistReport,
 } from "./types";
 
@@ -25,4 +26,6 @@ export const reportsApi = {
     api.get<PaymentsReport>(`/branches/${branchId}/reports/payments`, { year, month }),
   discounts: (branchId: string, activeOnly = true) =>
     api.get<DiscountsReport>(`/branches/${branchId}/reports/discounts`, { activeOnly }),
+  portions: (branchId: string, date: string) =>
+    api.get<PortionsReport>(`/branches/${branchId}/reports/portions`, { date }),
 };

@@ -127,6 +127,11 @@ export interface Child {
   updatedAt: string;
 }
 
+export interface AllergenTag {
+  id: string;
+  name: string;
+}
+
 export type ChildMedicalView =
   | {
       level: "full";
@@ -135,8 +140,9 @@ export type ChildMedicalView =
       activityLimits: string | null;
       doctorContact: string | null;
       criticalInfo: string | null;
+      allergens: AllergenTag[];
     }
-  | { level: "critical_only"; criticalInfo: string | null };
+  | { level: "critical_only"; criticalInfo: string | null; allergens: AllergenTag[] };
 
 export interface UpsertChildMedicalInput {
   allergies?: string;
@@ -183,6 +189,45 @@ export interface DischargeReason {
   id: string;
   name: string;
   isActive: boolean;
+}
+
+export interface Allergen {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface Dish {
+  id: string;
+  name: string;
+  isActive: boolean;
+  allergens: { allergen: Allergen }[];
+}
+
+export type MealType = "BREAKFAST" | "LUNCH" | "AFTERNOON_SNACK";
+
+export const MEAL_TYPES: MealType[] = ["BREAKFAST", "LUNCH", "AFTERNOON_SNACK"];
+
+export const MEAL_TYPE_LABELS: Record<MealType, string> = {
+  BREAKFAST: "Завтрак",
+  LUNCH: "Обед",
+  AFTERNOON_SNACK: "Полдник",
+};
+
+export interface MenuConflict {
+  childId: string;
+  fullName: string;
+  allergenNames: string[];
+}
+
+export interface MenuItem {
+  id: string;
+  date: string;
+  mealType: MealType;
+  dishId: string;
+  dishName: string;
+  allergenNames: string[];
+  conflicts: MenuConflict[];
 }
 
 export interface WaitlistEntry {
@@ -567,6 +612,19 @@ export interface DiscountsReportRow {
 export interface DiscountsReport {
   branchId: string;
   discounts: DiscountsReportRow[];
+  total: number;
+}
+
+export interface PortionsReportRow {
+  groupId: string;
+  groupName: string;
+  portionsNeeded: number;
+}
+
+export interface PortionsReport {
+  branchId: string;
+  date: string;
+  groups: PortionsReportRow[];
   total: number;
 }
 

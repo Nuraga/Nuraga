@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { DischargeReason, DocumentType, GroupType, LeadRejectionReason, LeadSource } from "./types";
+import type { Allergen, DischargeReason, Dish, DocumentType, GroupType, LeadRejectionReason, LeadSource } from "./types";
 
 export const groupTypesApi = {
   list: () => api.get<GroupType[]>("/group-types"),
@@ -43,4 +43,20 @@ export const leadRejectionReasonsApi = {
   update: (id: string, dto: Partial<{ name: string; isActive: boolean }>) =>
     api.patch<LeadRejectionReason>(`/lead-rejection-reasons/${id}`, dto),
   archive: (id: string) => api.post<LeadRejectionReason>(`/lead-rejection-reasons/${id}/archive`),
+};
+
+export const allergensApi = {
+  list: () => api.get<Allergen[]>("/allergens"),
+  create: (dto: { name: string }) => api.post<Allergen>("/allergens", dto),
+  update: (id: string, dto: Partial<{ name: string; isActive: boolean }>) =>
+    api.patch<Allergen>(`/allergens/${id}`, dto),
+  archive: (id: string) => api.post<Allergen>(`/allergens/${id}/archive`),
+};
+
+export const dishesApi = {
+  list: () => api.get<Dish[]>("/dishes"),
+  create: (dto: { name: string; allergenIds?: string[] }) => api.post<Dish>("/dishes", dto),
+  update: (id: string, dto: Partial<{ name: string; isActive: boolean; allergenIds: string[] }>) =>
+    api.patch<Dish>(`/dishes/${id}`, dto),
+  archive: (id: string) => api.post<Dish>(`/dishes/${id}/archive`),
 };

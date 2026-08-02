@@ -30,6 +30,7 @@ import LeadDetailPage from "./sales/LeadDetailPage";
 import StaffTasksPage from "./sales/StaffTasksPage";
 import MyQrPage from "./staff-attendance/MyQrPage";
 import DevicesPage from "./staff-attendance/DevicesPage";
+import MenuPage from "./menu/MenuPage";
 import StaffAttendanceDashboardPage from "./staff-attendance/StaffAttendanceDashboardPage";
 import ParentProtectedRoute from "./parent/ParentProtectedRoute";
 import ParentLayout from "./parent/ParentLayout";
@@ -103,6 +104,7 @@ export default function App() {
                     <Route path="/my-qr" element={<MyQrPage />} />
                     <Route path="/devices" element={<DevicesPage />} />
                     <Route path="/staff-attendance" element={<StaffAttendanceDashboardPage />} />
+                    <Route path="/menu" element={<MenuPage />} />
                   </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

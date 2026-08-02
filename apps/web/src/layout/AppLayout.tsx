@@ -10,6 +10,7 @@ import {
   BookOutlined,
   CalendarOutlined,
   CheckSquareOutlined,
+  CoffeeOutlined,
   CreditCardOutlined,
   DollarOutlined,
   DownOutlined,
@@ -69,6 +70,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: <TabletOutlined />,
     roles: ["OWNER", "BRANCH_MANAGER"],
   },
+  { key: "/menu", label: "Меню", icon: <CoffeeOutlined /> },
   {
     key: "/families",
     label: "Семьи",
