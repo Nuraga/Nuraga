@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { DischargeReason, DocumentType, GroupType } from "./types";
+import type { DischargeReason, DocumentType, GroupType, LeadRejectionReason, LeadSource } from "./types";
 
 export const groupTypesApi = {
   list: () => api.get<GroupType[]>("/group-types"),
@@ -27,4 +27,20 @@ export const documentTypesApi = {
   update: (id: string, dto: Partial<{ name: string; hasExpiry: boolean; isActive: boolean }>) =>
     api.patch<DocumentType>(`/document-types/${id}`, dto),
   archive: (id: string) => api.post<DocumentType>(`/document-types/${id}/archive`),
+};
+
+export const leadSourcesApi = {
+  list: () => api.get<LeadSource[]>("/lead-sources"),
+  create: (dto: { name: string }) => api.post<LeadSource>("/lead-sources", dto),
+  update: (id: string, dto: Partial<{ name: string; isActive: boolean }>) =>
+    api.patch<LeadSource>(`/lead-sources/${id}`, dto),
+  archive: (id: string) => api.post<LeadSource>(`/lead-sources/${id}/archive`),
+};
+
+export const leadRejectionReasonsApi = {
+  list: () => api.get<LeadRejectionReason[]>("/lead-rejection-reasons"),
+  create: (dto: { name: string }) => api.post<LeadRejectionReason>("/lead-rejection-reasons", dto),
+  update: (id: string, dto: Partial<{ name: string; isActive: boolean }>) =>
+    api.patch<LeadRejectionReason>(`/lead-rejection-reasons/${id}`, dto),
+  archive: (id: string) => api.post<LeadRejectionReason>(`/lead-rejection-reasons/${id}/archive`),
 };

@@ -25,6 +25,8 @@ import ReportsPage from "./reports/ReportsPage";
 import TariffsPage from "./billing/TariffsPage";
 import ServicesPage from "./billing/ServicesPage";
 import InvoicingPage from "./billing/InvoicingPage";
+import LeadsPage from "./sales/LeadsPage";
+import LeadDetailPage from "./sales/LeadDetailPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -60,6 +62,8 @@ export default function App() {
                       <Route path="/tariffs" element={<TariffsPage />} />
                       <Route path="/services" element={<ServicesPage />} />
                       <Route path="/invoicing" element={<InvoicingPage />} />
+                      <Route path="/leads" element={<LeadsPage />} />
+                      <Route path="/leads/:leadId" element={<LeadDetailPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<Navigate to="/" replace />} />

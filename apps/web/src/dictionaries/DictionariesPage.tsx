@@ -2,8 +2,14 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Form, Input, InputNumber, Modal, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
-import { groupTypesApi, dischargeReasonsApi, documentTypesApi } from "../api/dictionaries";
-import type { DischargeReason, DocumentType, GroupType } from "../api/types";
+import {
+  groupTypesApi,
+  dischargeReasonsApi,
+  documentTypesApi,
+  leadSourcesApi,
+  leadRejectionReasonsApi,
+} from "../api/dictionaries";
+import type { DischargeReason, DocumentType, GroupType, LeadRejectionReason, LeadSource } from "../api/types";
 import { ApiError } from "../api/client";
 
 function useDictionaryMutations<T extends { id: string }, TCreate, TUpdate>(
@@ -230,6 +236,177 @@ function DischargeReasonsTab() {
   );
 }
 
+function LeadSourcesTab() {
+  const { data = [], isLoading } = useQuery({ queryKey: ["lead-sources"], queryFn: leadSourcesApi.list });
+  const { save, archive } = useDictionaryMutations("lead-sources", leadSourcesApi);
+  const [editing, setEditing] = useState<LeadSource | null>(null);
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
+
+  function openCreate() {
+    setEditing(null);
+    form.resetFields();
+    setOpen(true);
+  }
+  function openEdit(row: LeadSource) {
+    setEditing(row);
+    form.setFieldsValue(row);
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+          Новый источник
+        </Button>
+      </Space>
+      <Table
+        rowKey="id"
+        loading={isLoading}
+        dataSource={data}
+        columns={[
+          { title: "Название", dataIndex: "name" },
+          {
+            title: "Статус",
+            dataIndex: "isActive",
+            render: (v: boolean) => (v ? <Tag color="green">Активен</Tag> : <Tag>Архив</Tag>),
+          },
+          {
+            title: "",
+            key: "actions",
+            render: (_, row: LeadSource) => (
+              <Space>
+                <Button size="small" onClick={() => openEdit(row)}>
+                  Изменить
+                </Button>
+                {row.isActive && (
+                  <Button size="small" danger onClick={() => archive.mutate(row.id)}>
+                    В архив
+                  </Button>
+                )}
+              </Space>
+            ),
+          },
+        ]}
+      />
+      <Modal
+        title={editing ? "Изменить источник" : "Новый источник"}
+        open={open}
+        onCancel={() => setOpen(false)}
+        confirmLoading={save.isPending}
+        destroyOnClose
+        onOk={() => form.submit()}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => {
+            save.mutate({ id: editing?.id, values });
+            setOpen(false);
+          }}
+        >
+          <Form.Item label="Название" name="name" rules={[{ required: true, message: "Укажите название" }]}>
+            <Input />
+          </Form.Item>
+          {editing && (
+            <Form.Item label="Активен" name="isActive" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          )}
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
+function LeadRejectionReasonsTab() {
+  const { data = [], isLoading } = useQuery({
+    queryKey: ["lead-rejection-reasons"],
+    queryFn: leadRejectionReasonsApi.list,
+  });
+  const { save, archive } = useDictionaryMutations("lead-rejection-reasons", leadRejectionReasonsApi);
+  const [editing, setEditing] = useState<LeadRejectionReason | null>(null);
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
+
+  function openCreate() {
+    setEditing(null);
+    form.resetFields();
+    setOpen(true);
+  }
+  function openEdit(row: LeadRejectionReason) {
+    setEditing(row);
+    form.setFieldsValue(row);
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+          Новая причина отказа
+        </Button>
+      </Space>
+      <Table
+        rowKey="id"
+        loading={isLoading}
+        dataSource={data}
+        columns={[
+          { title: "Название", dataIndex: "name" },
+          {
+            title: "Статус",
+            dataIndex: "isActive",
+            render: (v: boolean) => (v ? <Tag color="green">Активна</Tag> : <Tag>Архив</Tag>),
+          },
+          {
+            title: "",
+            key: "actions",
+            render: (_, row: LeadRejectionReason) => (
+              <Space>
+                <Button size="small" onClick={() => openEdit(row)}>
+                  Изменить
+                </Button>
+                {row.isActive && (
+                  <Button size="small" danger onClick={() => archive.mutate(row.id)}>
+                    В архив
+                  </Button>
+                )}
+              </Space>
+            ),
+          },
+        ]}
+      />
+      <Modal
+        title={editing ? "Изменить причину" : "Новая причина отказа"}
+        open={open}
+        onCancel={() => setOpen(false)}
+        confirmLoading={save.isPending}
+        destroyOnClose
+        onOk={() => form.submit()}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => {
+            save.mutate({ id: editing?.id, values });
+            setOpen(false);
+          }}
+        >
+          <Form.Item label="Название" name="name" rules={[{ required: true, message: "Укажите название" }]}>
+            <Input />
+          </Form.Item>
+          {editing && (
+            <Form.Item label="Активна" name="isActive" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          )}
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
 function DocumentTypesTab() {
   const { data = [], isLoading } = useQuery({
     queryKey: ["document-types"],
@@ -330,6 +507,8 @@ export default function DictionariesPage() {
           { key: "group-types", label: "Типы групп", children: <GroupTypesTab /> },
           { key: "discharge-reasons", label: "Причины отчисления", children: <DischargeReasonsTab /> },
           { key: "document-types", label: "Типы документов", children: <DocumentTypesTab /> },
+          { key: "lead-sources", label: "Источники лидов", children: <LeadSourcesTab /> },
+          { key: "lead-rejection-reasons", label: "Причины отказа", children: <LeadRejectionReasonsTab /> },
         ]}
       />
     </>

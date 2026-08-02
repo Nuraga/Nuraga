@@ -13,6 +13,7 @@ import {
   DollarOutlined,
   DownOutlined,
   FileTextOutlined,
+  FunnelPlotOutlined,
   HomeOutlined,
   ImportOutlined,
   LogoutOutlined,
@@ -40,6 +41,12 @@ const NAV_ITEMS: NavItem[] = [
   { key: "/branches", label: "Филиалы", icon: <BankOutlined />, roles: ["OWNER", "SUPERADMIN"] },
   { key: "/groups", label: "Группы", icon: <ApartmentOutlined /> },
   { key: "/staff", label: "Сотрудники", icon: <TeamOutlined /> },
+  {
+    key: "/leads",
+    label: "Лиды",
+    icon: <FunnelPlotOutlined />,
+    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER"],
+  },
   {
     key: "/families",
     label: "Семьи",

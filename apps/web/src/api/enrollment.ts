@@ -52,8 +52,11 @@ export const enrollmentApi = {
 export const waitlistApi = {
   list: (branchId: string, groupId: string, limit?: number) =>
     api.get<WaitlistEntry[]>(`/branches/${branchId}/groups/${groupId}/waitlist`, { limit }),
-  add: (branchId: string, groupId: string, dto: { childId: string; priority?: number }) =>
-    api.post<WaitlistEntry>(`/branches/${branchId}/groups/${groupId}/waitlist`, dto),
+  add: (
+    branchId: string,
+    groupId: string,
+    dto: { childId?: string; leadId?: string; priority?: number },
+  ) => api.post<WaitlistEntry>(`/branches/${branchId}/groups/${groupId}/waitlist`, dto),
   remove: (branchId: string, groupId: string, entryId: string) =>
     api.delete<void>(`/branches/${branchId}/groups/${groupId}/waitlist/${entryId}`),
 };

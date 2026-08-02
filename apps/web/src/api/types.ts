@@ -184,10 +184,12 @@ export interface WaitlistEntry {
   branchId: string;
   groupId: string;
   childId: string | null;
+  leadId: string | null;
   leadName: string | null;
   priority: number;
   queuedAt: string;
   child?: Child;
+  lead?: Lead;
 }
 
 export type AttendanceStatus =
@@ -540,6 +542,149 @@ export interface DiscountsReport {
 export interface GenerateInvoicesResult {
   totalFamilies: number;
   results: { familyId: string; status: string; totalMinor?: number }[];
+}
+
+// ---------------------------------------------------------------------------
+// Sales / leads (Этап 3, MVP slice — ТЗ §3)
+// ---------------------------------------------------------------------------
+
+export type LeadStage =
+  | "NEW"
+  | "CONTACTED"
+  | "TOUR_SCHEDULED"
+  | "TOUR_DONE"
+  | "TRIAL_DAY"
+  | "CONTRACT_SIGNING"
+  | "ENROLLED"
+  | "REJECTED"
+  | "WAITLISTED";
+
+export const LEAD_STAGES: LeadStage[] = [
+  "NEW",
+  "CONTACTED",
+  "TOUR_SCHEDULED",
+  "TOUR_DONE",
+  "TRIAL_DAY",
+  "CONTRACT_SIGNING",
+  "ENROLLED",
+  "REJECTED",
+  "WAITLISTED",
+];
+
+// Columns shown on the kanban board — ENROLLED/REJECTED/WAITLISTED are only
+// reachable via their dedicated flows (conversion wizard / reject action /
+// waitlist screen), never by dragging a card, so they don't get a column.
+export const LEAD_BOARD_STAGES: AssignableLeadStage[] = [
+  "NEW",
+  "CONTACTED",
+  "TOUR_SCHEDULED",
+  "TOUR_DONE",
+  "TRIAL_DAY",
+  "CONTRACT_SIGNING",
+];
+
+// Stages assignable via PATCH /leads/:id/stage — ENROLLED/WAITLISTED are
+// reachable only via their dedicated flows (mirrors the backend DTO).
+export type AssignableLeadStage = Exclude<LeadStage, "ENROLLED" | "WAITLISTED">;
+
+export const ASSIGNABLE_LEAD_STAGES: AssignableLeadStage[] = [
+  "NEW",
+  "CONTACTED",
+  "TOUR_SCHEDULED",
+  "TOUR_DONE",
+  "TRIAL_DAY",
+  "CONTRACT_SIGNING",
+  "REJECTED",
+];
+
+export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
+  NEW: "Новый",
+  CONTACTED: "Связались",
+  TOUR_SCHEDULED: "Экскурсия назначена",
+  TOUR_DONE: "Экскурсия прошла",
+  TRIAL_DAY: "Пробный день",
+  CONTRACT_SIGNING: "Оформление договора",
+  ENROLLED: "Зачислен",
+  REJECTED: "Отказ",
+  WAITLISTED: "В очереди",
+};
+
+export interface LeadSource {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface LeadRejectionReason {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface Lead {
+  id: string;
+  branchId: string;
+  parentFullName: string;
+  parentPhone: string;
+  parentEmail: string | null;
+  childFullName: string | null;
+  childBirthDate: string | null;
+  targetDate: string | null;
+  sourceId: string | null;
+  stage: LeadStage;
+  stageEnteredAt: string;
+  rejectionReasonId: string | null;
+  rejectionComment: string | null;
+  responsibleUserId: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  convertedFamilyId: string | null;
+  convertedChildId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  source?: LeadSource | null;
+  rejectionReason?: LeadRejectionReason | null;
+  activities?: LeadActivity[];
+  tasks?: Task[];
+}
+
+export interface LeadDuplicate {
+  id: string;
+  branchId: string;
+  branchName: string;
+  stage: LeadStage;
+  responsibleUserId: string;
+  childFullName: string | null;
+  createdAt: string;
+}
+
+export interface LeadActivity {
+  id: string;
+  leadId: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface Task {
+  id: string;
+  leadId: string | null;
+  familyId: string | null;
+  description: string;
+  dueAt: string;
+  assignedToId: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TaskStatus = "OPEN" | "DONE" | "OVERDUE";
+
+/** OPEN/DONE/OVERDUE is derived, not stored (mirrors the backend's approach). */
+export function getTaskStatus(task: Task): TaskStatus {
+  if (task.completedAt) return "DONE";
+  return new Date(task.dueAt).getTime() < Date.now() ? "OVERDUE" : "OPEN";
 }
 
 /** Minor units -> a display string in the given currency (e.g. 30000 -> "300.00 KZT"). */
