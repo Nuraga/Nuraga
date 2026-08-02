@@ -10,6 +10,11 @@ export interface BranchGrant {
 // A single grant in either role, in any branch, gives access to all branches.
 export const NETWORK_WIDE_ROLES: Role[] = ["SUPERADMIN", "OWNER"];
 
+export interface ParentProfile {
+  id: string;
+  familyId: string;
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string | null;
@@ -17,4 +22,6 @@ export interface AuthenticatedUser {
   fullName: string;
   grants: BranchGrant[];
   hasNetworkAccess: boolean;
+  /** Set when this user is a parent's login (Parent.userId), never alongside branch grants in practice. */
+  parentProfile?: ParentProfile | null;
 }

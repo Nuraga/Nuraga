@@ -9,7 +9,7 @@ export class UserContextService {
   async loadById(userId: string): Promise<AuthenticatedUser | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { branchRoles: true },
+      include: { branchRoles: true, parentProfile: true },
     });
     if (!user || !user.isActive) return null;
 
@@ -22,6 +22,9 @@ export class UserContextService {
       fullName: user.fullName,
       grants,
       hasNetworkAccess: grants.some((g) => NETWORK_WIDE_ROLES.includes(g.role)),
+      parentProfile: user.parentProfile
+        ? { id: user.parentProfile.id, familyId: user.parentProfile.familyId }
+        : null,
     };
   }
 }

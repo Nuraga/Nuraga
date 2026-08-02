@@ -4,12 +4,13 @@ import { TimesheetController } from "./timesheet.controller";
 import { AttendanceService } from "./attendance.service";
 import { TimesheetService } from "./timesheet.service";
 import { AttendanceAccessService } from "./attendance-access.service";
+import { AbsenceRequestsService } from "./absence-requests.service";
 import { AuthModule } from "../auth/auth.module";
 
 @Module({
   imports: [AuthModule],
   controllers: [AttendanceController, TimesheetController],
-  providers: [AttendanceService, TimesheetService, AttendanceAccessService],
-  exports: [AttendanceService, TimesheetService],
+  providers: [AttendanceService, TimesheetService, AttendanceAccessService, AbsenceRequestsService],
+  exports: [AttendanceService, TimesheetService, AbsenceRequestsService],
 })
 export class AttendanceModule {}

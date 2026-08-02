@@ -6,6 +6,7 @@ import { CreateParentDto } from "./dto/create-parent.dto";
 import { UpdateParentDto } from "./dto/update-parent.dto";
 import { CreateTrustedPersonDto } from "./dto/create-trusted-person.dto";
 import { UpdateTrustedPersonDto } from "./dto/update-trusted-person.dto";
+import { CreateParentAccountDto } from "./dto/create-parent-account.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/access/current-user.decorator";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
@@ -81,6 +82,17 @@ export class FamiliesController {
     @Param("parentId") parentId: string,
   ) {
     return this.families.removeParent(user, branchId, familyId, parentId);
+  }
+
+  @Post(":id/parents/:parentId/account")
+  provisionParentAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("id") familyId: string,
+    @Param("parentId") parentId: string,
+    @Body() dto: CreateParentAccountDto,
+  ) {
+    return this.families.provisionParentAccount(user, branchId, familyId, parentId, dto);
   }
 
   @Post(":id/trusted-persons")

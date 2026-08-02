@@ -22,10 +22,18 @@ describe("FamiliesService", () => {
   const teacher = user({ grants: [{ branchId, role: "TEACHER" }] });
 
   let prisma: any;
+  let tx: any;
   let audit: { record: jest.Mock };
+  let password: { hash: jest.Mock };
   let service: FamiliesService;
 
   beforeEach(() => {
+    tx = {
+      user: { create: jest.fn((args: any) => Promise.resolve({ id: "newu1", ...args.data })) },
+      parent: {
+        update: jest.fn((args: any) => Promise.resolve({ id: args.where.id, ...args.data })),
+      },
+    };
     prisma = {
       family: {
         create: jest.fn((args: any) => Promise.resolve({ id: "f1", ...args.data })),
@@ -36,7 +44,9 @@ describe("FamiliesService", () => {
       },
       parent: {
         create: jest.fn((args: any) => Promise.resolve({ id: "p1", ...args.data })),
-        findUnique: jest.fn(() => Promise.resolve({ id: "p1", familyId: "f1" })),
+        findUnique: jest.fn(() =>
+          Promise.resolve({ id: "p1", familyId: "f1", fullName: "Иван Иванов", userId: null, email: null, phone: null }),
+        ),
         update: jest.fn((args: any) => Promise.resolve({ id: args.where.id, ...args.data })),
         delete: jest.fn(() => Promise.resolve()),
       },
@@ -46,9 +56,14 @@ describe("FamiliesService", () => {
         update: jest.fn((args: any) => Promise.resolve({ id: args.where.id, ...args.data })),
         delete: jest.fn(() => Promise.resolve()),
       },
+      user: {
+        findUnique: jest.fn(() => Promise.resolve(null)),
+      },
+      $transaction: jest.fn((fn: any) => fn(tx)),
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
-    service = new FamiliesService(prisma, new BranchScopeService(), audit as any);
+    password = { hash: jest.fn(() => Promise.resolve("hashed")) };
+    service = new FamiliesService(prisma, new BranchScopeService(), audit as any, password as any);
   });
 
   it("rejects family creation from Accountant (read-only role)", async () => {
@@ -89,5 +104,67 @@ describe("FamiliesService", () => {
     await expect(
       service.updateParent(manager, branchId, "f1", "p1", { fullName: "X" }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  describe("provisionParentAccount", () => {
+    const dto = { password: "correcthorse", email: "anna@example.com" };
+
+    it("rejects a role without family write access", async () => {
+      await expect(
+        service.provisionParentAccount(accountant, branchId, "f1", "p1", dto),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("rejects when the parent already has an account", async () => {
+      prisma.parent.findUnique.mockResolvedValue({ id: "p1", familyId: "f1", userId: "existing-user" });
+      await expect(
+        service.provisionParentAccount(manager, branchId, "f1", "p1", dto),
+      ).rejects.toThrow("already has an account");
+    });
+
+    it("rejects when neither the dto nor the parent record has an email or phone", async () => {
+      await expect(
+        service.provisionParentAccount(manager, branchId, "f1", "p1", { password: "correcthorse" }),
+      ).rejects.toThrow(/email or phone is required/);
+    });
+
+    it("rejects when the email is already taken", async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: "other-user" });
+      await expect(
+        service.provisionParentAccount(manager, branchId, "f1", "p1", dto),
+      ).rejects.toThrow("already exists");
+    });
+
+    it("creates a User in a transaction and links it to the Parent, without a branch role", async () => {
+      const result = await service.provisionParentAccount(manager, branchId, "f1", "p1", dto);
+
+      expect(password.hash).toHaveBeenCalledWith("correcthorse");
+      expect(tx.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fullName: "Иван Иванов", email: "anna@example.com" }),
+        }),
+      );
+      expect(tx.parent.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "p1" }, data: { userId: "newu1" } }),
+      );
+      expect(result).toMatchObject({ userId: "newu1" });
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ entity: "parent" }));
+    });
+
+    it("falls back to the parent's existing phone when no email/phone is given in the dto", async () => {
+      prisma.parent.findUnique.mockResolvedValue({
+        id: "p1",
+        familyId: "f1",
+        fullName: "Иван Иванов",
+        userId: null,
+        email: null,
+        phone: "+77011112233",
+      });
+      await service.provisionParentAccount(manager, branchId, "f1", "p1", { password: "correcthorse" });
+
+      expect(tx.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ phone: "+77011112233" }) }),
+      );
+    });
   });
 });

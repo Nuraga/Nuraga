@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { AuditService } from "../common/audit/audit.service";
+import { PasswordService } from "../auth/password.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import { CreateFamilyDto } from "./dto/create-family.dto";
 import { UpdateFamilyDto } from "./dto/update-family.dto";
@@ -9,6 +10,7 @@ import { CreateParentDto } from "./dto/create-parent.dto";
 import { UpdateParentDto } from "./dto/update-parent.dto";
 import { CreateTrustedPersonDto } from "./dto/create-trusted-person.dto";
 import { UpdateTrustedPersonDto } from "./dto/update-trusted-person.dto";
+import { CreateParentAccountDto } from "./dto/create-parent-account.dto";
 
 // Family list/detail is a branch-office operation, not a teacher one — a
 // teacher works through Children (own group), never by browsing families
@@ -22,6 +24,7 @@ export class FamiliesService {
     private readonly prisma: PrismaService,
     private readonly branchScope: BranchScopeService,
     private readonly audit: AuditService,
+    private readonly password: PasswordService,
   ) {}
 
   async create(user: AuthenticatedUser, branchId: string, dto: CreateFamilyDto) {
@@ -145,6 +148,68 @@ export class FamiliesService {
       oldValue: existing,
       actorId: user.id,
     });
+  }
+
+  /**
+   * Provisions a login for an existing Parent row (родитель gets access to
+   * the parent portal). Unlike StaffService's equivalent, this never grants
+   * a UserBranchRole — parents are scoped to their family via Parent.userId,
+   * not a branch role (see ParentAccessService).
+   */
+  async provisionParentAccount(
+    user: AuthenticatedUser,
+    branchId: string,
+    familyId: string,
+    parentId: string,
+    dto: CreateParentAccountDto,
+  ) {
+    this.branchScope.assertRoleInBranch(user, [...FAMILY_WRITE_ROLES], branchId);
+    await this.getOwnedOrThrow(branchId, familyId);
+    const parent = await this.getParentOrThrow(familyId, parentId);
+
+    if (parent.userId) {
+      throw new ConflictException("This parent already has an account");
+    }
+
+    const email = dto.email ?? parent.email ?? undefined;
+    const phone = dto.phone ?? parent.phone ?? undefined;
+    if (!email && !phone) {
+      throw new BadRequestException(
+        "email or phone is required — provide one or add it to the parent's contact info first",
+      );
+    }
+
+    if (email) {
+      const emailTaken = await this.prisma.user.findUnique({ where: { email } });
+      if (emailTaken) throw new ConflictException("A user with this email already exists");
+    }
+    if (phone) {
+      const phoneTaken = await this.prisma.user.findUnique({ where: { phone } });
+      if (phoneTaken) throw new ConflictException("A user with this phone already exists");
+    }
+
+    const passwordHash = await this.password.hash(dto.password);
+
+    const updatedParent = await this.prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: { fullName: parent.fullName, email, phone, passwordHash },
+      });
+      return tx.parent.update({
+        where: { id: parentId },
+        data: { userId: newUser.id },
+        include: { user: { select: { id: true, email: true, phone: true } } },
+      });
+    });
+
+    await this.audit.record({
+      entity: "parent",
+      entityId: parentId,
+      action: "update",
+      oldValue: { userId: null },
+      newValue: { event: "provision_account", userId: updatedParent.userId },
+      actorId: user.id,
+    });
+    return updatedParent;
   }
 
   async addTrustedPerson(
