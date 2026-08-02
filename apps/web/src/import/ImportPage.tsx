@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { App, Alert, Button, Card, Space, Table, Tag, Typography, Upload } from "antd";
+import { App, Alert, Button, Card, Space, Table, Tabs, Tag, Typography, Upload } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadFile } from "antd";
 import { importApi } from "../api/importApi";
@@ -8,18 +8,23 @@ import type { ImportReport } from "../api/types";
 import { ApiError } from "../api/client";
 import { useBranch } from "../layout/BranchContext";
 
-export default function ImportPage() {
+function ImportForm({
+  columnsHint,
+  description,
+  onImport,
+}: {
+  columnsHint: string;
+  description: string;
+  onImport: (file: File, dryRun: boolean) => Promise<ImportReport>;
+}) {
   const { message } = App.useApp();
-  const { selectedBranchId } = useBranch();
-  const branchId = selectedBranchId!;
-
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [report, setReport] = useState<ImportReport | null>(null);
 
   const importMutation = useMutation({
     mutationFn: (dryRun: boolean) => {
       const file = (fileList[0]?.originFileObj ?? fileList[0]) as File;
-      return importApi.importChildren(branchId, file, dryRun);
+      return onImport(file, dryRun);
     },
     onSuccess: setReport,
     onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка импорта"),
@@ -27,24 +32,27 @@ export default function ImportPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <Typography.Title level={3}>Импорт детей из CSV</Typography.Title>
-
       <Card>
         <Typography.Paragraph>
-          Файл CSV (через запятую, UTF-8) с заголовком и колонками:{" "}
-          <Typography.Text code>
-            family_name, child_full_name, child_birth_date, child_sex, parent_full_name,
-            parent_relationship, parent_phone, parent_email
-          </Typography.Text>
-          . Каждая строка создаёт новую семью, родителя и ребёнка (в очереди).
+          {description} Файл CSV (через запятую, UTF-8) с заголовком и колонками:{" "}
+          <Typography.Text code>{columnsHint}</Typography.Text>
         </Typography.Paragraph>
 
-        <Upload beforeUpload={() => false} maxCount={1} fileList={fileList} onChange={({ fileList: fl }) => setFileList(fl)}>
+        <Upload
+          beforeUpload={() => false}
+          maxCount={1}
+          fileList={fileList}
+          onChange={({ fileList: fl }) => setFileList(fl)}
+        >
           <Button icon={<UploadOutlined />}>Выбрать файл</Button>
         </Upload>
 
         <Space style={{ marginTop: 16 }}>
-          <Button disabled={fileList.length === 0} loading={importMutation.isPending} onClick={() => importMutation.mutate(true)}>
+          <Button
+            disabled={fileList.length === 0}
+            loading={importMutation.isPending}
+            onClick={() => importMutation.mutate(true)}
+          >
             Проверить (без сохранения)
           </Button>
           <Button
@@ -89,5 +97,42 @@ export default function ImportPage() {
         </Card>
       )}
     </Space>
+  );
+}
+
+export default function ImportPage() {
+  const { selectedBranchId } = useBranch();
+  const branchId = selectedBranchId!;
+
+  return (
+    <>
+      <Typography.Title level={3}>Импорт из CSV</Typography.Title>
+      <Tabs
+        items={[
+          {
+            key: "children",
+            label: "Дети",
+            children: (
+              <ImportForm
+                description="Каждая строка создаёт новую семью, родителя и ребёнка (в очереди)."
+                columnsHint="family_name, child_full_name, child_birth_date, child_sex, parent_full_name, parent_relationship, parent_phone, parent_email"
+                onImport={(file, dryRun) => importApi.importChildren(branchId, file, dryRun)}
+              />
+            ),
+          },
+          {
+            key: "leads",
+            label: "Лиды",
+            children: (
+              <ImportForm
+                description="Каждая строка создаёт новый лид в стадии «Новый». Источник и ответственный ищутся по названию/email — они должны уже существовать в системе."
+                columnsHint="parent_full_name, parent_phone, parent_email, child_full_name, child_birth_date, target_date, source_name, responsible_email"
+                onImport={(file, dryRun) => importApi.importLeads(branchId, file, dryRun)}
+              />
+            ),
+          },
+        ]}
+      />
+    </>
   );
 }

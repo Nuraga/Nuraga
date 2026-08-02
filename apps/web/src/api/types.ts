@@ -242,6 +242,7 @@ export interface ImportRowResult {
   status: "created" | "error";
   familyId?: string;
   childId?: string;
+  leadId?: string;
   errors?: string[];
 }
 
