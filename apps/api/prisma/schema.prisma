@@ -182,6 +182,8 @@ model Parent {
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
 
+  absenceRequests AbsenceRequest[]
+
   @@index([familyId])
   @@map("parent")
 }
@@ -237,6 +239,7 @@ model Child {
   discounts       Discount[]
   contracts       Contract[]
   invoiceLines    InvoiceLine[]
+  absenceRequests AbsenceRequest[]
 
   @@index([familyId])
   @@index([groupId])
@@ -376,6 +379,37 @@ model Attendance {
   @@unique([childId, date])
   @@index([groupId, date])
   @@map("attendance")
+}
+
+enum AbsenceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ТЗ §5.2/§7.1: a parent-submitted heads-up about an upcoming absence.
+// Approval upserts Attendance{status: ABSENT_EXCUSED} for every date in the
+// range (mirrors AttendanceService.mark's per-day upsert) — this is the
+// only write path into Attendance a parent influences, and always via
+// staff review, never directly.
+model AbsenceRequest {
+  id                  String                @id @default(uuid())
+  childId             String
+  dateFrom            DateTime              @db.Date
+  dateTo              DateTime              @db.Date
+  reason              String?
+  status              AbsenceRequestStatus  @default(PENDING)
+  submittedByParentId String
+  reviewedById        String?
+  reviewedAt          DateTime?
+  reviewComment       String?
+  createdAt           DateTime              @default(now())
+
+  child             Child  @relation(fields: [childId], references: [id], onDelete: Cascade)
+  submittedByParent Parent @relation(fields: [submittedByParentId], references: [id])
+
+  @@index([childId])
+  @@map("absence_request")
 }
 
 enum TimesheetPeriodStatus {
