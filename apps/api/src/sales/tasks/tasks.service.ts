@@ -7,11 +7,14 @@ import type { AuthenticatedUser } from "../../common/access/branch-access.types"
 import { CreateTaskDto } from "./dto/create-task.dto";
 
 // ТЗ §2.2 has no dedicated "Задачи" row — reusing the "Лиды" row's roles for
-// management access. Tasks with neither leadId nor familyId are general
-// staff assignments (заведующий -> воспитатель/няня); any staff member can
+// lead/family-linked tasks (MANAGER = менеджер по продажам, needs this for
+// their own follow-ups). Tasks with neither leadId nor familyId are general
+// staff assignments (заведующий -> воспитатель/няня) — MANAGER deliberately
+// has NO access to these; only OWNER/BRANCH_MANAGER (SUPERADMIN bypasses via
+// hasNetworkAccess) may assign or manage them. Any staff member can always
 // read/update the status of a task assigned to them regardless of role.
-const TASK_READ_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
-const TASK_WRITE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
+const SALES_TASK_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
+const STAFF_TASK_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER"];
 
 export interface TaskFilters {
   leadId?: string;
@@ -35,7 +38,8 @@ export class TasksService {
     if (isOwnTasksOnly) {
       this.branchScope.assertBranchAccess(user, branchId);
     } else {
-      this.branchScope.assertRoleInBranch(user, TASK_READ_ROLES, branchId);
+      const roles = filters.scope === "staff" ? STAFF_TASK_ROLES : SALES_TASK_ROLES;
+      this.branchScope.assertRoleInBranch(user, roles, branchId);
     }
 
     return this.prisma.task.findMany({
@@ -52,11 +56,12 @@ export class TasksService {
   }
 
   async create(user: AuthenticatedUser, branchId: string, dto: CreateTaskDto) {
-    this.branchScope.assertRoleInBranch(user, TASK_WRITE_ROLES, branchId);
-
     if (dto.leadId && dto.familyId) {
       throw new BadRequestException("A task cannot be linked to both a lead and a family");
     }
+
+    const roles = dto.leadId || dto.familyId ? SALES_TASK_ROLES : STAFF_TASK_ROLES;
+    this.branchScope.assertRoleInBranch(user, roles, branchId);
 
     if (dto.leadId) await this.assertLeadInBranch(branchId, dto.leadId);
     if (dto.familyId) await this.assertFamilyInBranch(branchId, dto.familyId);
@@ -87,8 +92,9 @@ export class TasksService {
 
   async updateStatus(user: AuthenticatedUser, branchId: string, id: string, status: TaskStatus) {
     const existing = await this.getInBranch(user, branchId, id);
+    const roles = existing.leadId || existing.familyId ? SALES_TASK_ROLES : STAFF_TASK_ROLES;
 
-    if (!this.branchScope.hasAnyRoleInBranch(user, TASK_WRITE_ROLES, branchId) && existing.assignedToId !== user.id) {
+    if (!this.branchScope.hasAnyRoleInBranch(user, roles, branchId) && existing.assignedToId !== user.id) {
       throw new ForbiddenException("You can only update tasks assigned to you");
     }
 

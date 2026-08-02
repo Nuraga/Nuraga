@@ -10,7 +10,10 @@ import { useBranchRoles, hasAnyRole } from "../auth/roles";
 import StaffTasksBoard from "./StaffTasksBoard";
 import CreateStaffTaskModal from "./CreateStaffTaskModal";
 
-const TASK_MANAGEMENT_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER"] as const;
+// Only the заведующий (BRANCH_MANAGER) and OWNER assign staff tasks —
+// MANAGER (менеджер по продажам) is deliberately excluded, mirrors
+// STAFF_TASK_ROLES in tasks.service.ts.
+const TASK_MANAGEMENT_ROLES = ["OWNER", "BRANCH_MANAGER"] as const;
 
 export default function StaffTasksPage() {
   const { selectedBranchId } = useBranch();

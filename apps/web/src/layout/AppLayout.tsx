@@ -52,7 +52,7 @@ const NAV_ITEMS: NavItem[] = [
     key: "/tasks",
     label: "Задачи",
     icon: <CheckSquareOutlined />,
-    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "TEACHER"],
+    roles: ["OWNER", "BRANCH_MANAGER", "TEACHER"],
   },
   {
     key: "/families",

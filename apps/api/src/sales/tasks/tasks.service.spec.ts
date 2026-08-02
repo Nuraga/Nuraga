@@ -18,6 +18,7 @@ function user(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser {
 describe("TasksService", () => {
   const branchId = "b1";
   const manager = user({ id: "mgr1", grants: [{ branchId, role: "MANAGER" }] });
+  const branchManager = user({ id: "bm1", grants: [{ branchId, role: "BRANCH_MANAGER" }] });
   const teacher = user({ id: "teacher1", grants: [{ branchId, role: "TEACHER" }] });
   const otherTeacher = user({ id: "teacher2", grants: [{ branchId, role: "TEACHER" }] });
 
@@ -60,12 +61,22 @@ describe("TasksService", () => {
     });
 
     it("creates a general staff task when neither leadId nor familyId is given", async () => {
-      const task = await service.create(manager, branchId, {
+      const task = await service.create(branchManager, branchId, {
         description: "Проверить группу",
         dueAt: "2026-09-01",
         assignedToId: "teacher1",
       } as any);
       expect(task).toMatchObject({ branchId, leadId: undefined, familyId: undefined, description: "Проверить группу" });
+    });
+
+    it("rejects a sales manager (MANAGER) from creating a general staff task", async () => {
+      await expect(
+        service.create(manager, branchId, {
+          description: "Проверить группу",
+          dueAt: "2026-09-01",
+          assignedToId: "teacher1",
+        } as any),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it("rejects when both leadId and familyId are given", async () => {
@@ -105,8 +116,12 @@ describe("TasksService", () => {
       await expect(service.list(teacher, branchId, { assignedToId: "mgr1" })).rejects.toThrow(ForbiddenException);
     });
 
-    it("allows a manager to list the branch-wide board", async () => {
-      await expect(service.list(manager, branchId, { scope: "staff" })).resolves.toEqual([]);
+    it("allows a branch manager to list the branch-wide staff board", async () => {
+      await expect(service.list(branchManager, branchId, { scope: "staff" })).resolves.toEqual([]);
+    });
+
+    it("rejects a sales manager (MANAGER) from listing the staff board", async () => {
+      await expect(service.list(manager, branchId, { scope: "staff" })).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -161,6 +176,35 @@ describe("TasksService", () => {
       });
       const task = await service.updateStatus(teacher, branchId, "t1", "TODO");
       expect(task.completedAt).toBeNull();
+    });
+
+    it("rejects a sales manager (MANAGER) from moving someone else's general staff task", async () => {
+      prisma.task.findUnique.mockResolvedValue({
+        id: "t1",
+        branchId,
+        leadId: null,
+        familyId: null,
+        assignedToId: "teacher1",
+        status: "TODO",
+        completedAt: null,
+      });
+      await expect(service.updateStatus(manager, branchId, "t1", "IN_PROGRESS")).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it("allows a branch manager to move someone else's general staff task", async () => {
+      prisma.task.findUnique.mockResolvedValue({
+        id: "t1",
+        branchId,
+        leadId: null,
+        familyId: null,
+        assignedToId: "teacher1",
+        status: "TODO",
+        completedAt: null,
+      });
+      const task = await service.updateStatus(branchManager, branchId, "t1", "IN_PROGRESS");
+      expect(task.status).toBe("IN_PROGRESS");
     });
   });
 });
