@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { AttendanceSummaryReport, OccupancyReport, WaitlistReport } from "./types";
+import type { AttendanceSummaryReport, DebtReport, OccupancyReport, WaitlistReport } from "./types";
 
 export const reportsApi = {
   occupancy: (branchId: string) => api.get<OccupancyReport>(`/branches/${branchId}/reports/occupancy`),
@@ -10,4 +10,5 @@ export const reportsApi = {
       groupId,
     }),
   waitlist: (branchId: string) => api.get<WaitlistReport>(`/branches/${branchId}/reports/waitlist`),
+  debt: (branchId: string) => api.get<DebtReport>(`/branches/${branchId}/reports/debt`),
 };

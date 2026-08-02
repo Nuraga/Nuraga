@@ -4,10 +4,13 @@ import { Layout, Menu, Select, Dropdown, Typography, Flex, Spin } from "antd";
 import type { MenuProps } from "antd";
 import {
   ApartmentOutlined,
+  AccountBookOutlined,
   BankOutlined,
   BarChartOutlined,
   BookOutlined,
   CalendarOutlined,
+  CreditCardOutlined,
+  DollarOutlined,
   DownOutlined,
   FileTextOutlined,
   HomeOutlined,
@@ -66,6 +69,24 @@ const NAV_ITEMS: NavItem[] = [
     label: "Табели",
     icon: <FileTextOutlined />,
     roles: ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT"],
+  },
+  {
+    key: "/tariffs",
+    label: "Тарифы",
+    icon: <DollarOutlined />,
+    roles: ["OWNER", "SUPERADMIN"],
+  },
+  {
+    key: "/services",
+    label: "Услуги",
+    icon: <CreditCardOutlined />,
+    roles: ["OWNER", "BRANCH_MANAGER"],
+  },
+  {
+    key: "/invoicing",
+    label: "Начисления",
+    icon: <AccountBookOutlined />,
+    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT"],
   },
   {
     key: "/dictionaries",

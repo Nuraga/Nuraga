@@ -22,6 +22,9 @@ import AttendancePage from "./attendance/AttendancePage";
 import TimesheetsPage from "./attendance/TimesheetsPage";
 import ImportPage from "./import/ImportPage";
 import ReportsPage from "./reports/ReportsPage";
+import TariffsPage from "./billing/TariffsPage";
+import ServicesPage from "./billing/ServicesPage";
+import InvoicingPage from "./billing/InvoicingPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -54,6 +57,9 @@ export default function App() {
                       <Route path="/timesheets" element={<TimesheetsPage />} />
                       <Route path="/import" element={<ImportPage />} />
                       <Route path="/reports" element={<ReportsPage />} />
+                      <Route path="/tariffs" element={<TariffsPage />} />
+                      <Route path="/services" element={<ServicesPage />} />
+                      <Route path="/invoicing" element={<InvoicingPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<Navigate to="/" replace />} />

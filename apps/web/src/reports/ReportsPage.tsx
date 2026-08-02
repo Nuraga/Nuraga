@@ -4,7 +4,7 @@ import { DatePicker, Select, Space, Table, Tabs, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { reportsApi } from "../api/reports";
 import { groupsApi } from "../api/groups";
-import { ATTENDANCE_STATUSES } from "../api/types";
+import { ATTENDANCE_STATUSES, formatMinor } from "../api/types";
 import { useBranch } from "../layout/BranchContext";
 
 const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
@@ -121,6 +121,39 @@ function WaitlistTab({ branchId }: { branchId: string }) {
   );
 }
 
+function DebtTab({ branchId }: { branchId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["reports", "debt", branchId],
+    queryFn: () => reportsApi.debt(branchId),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      {data && (
+        <Typography.Paragraph>
+          Общая задолженность: <strong>{formatMinor(data.totalDebtMinor)}</strong>
+        </Typography.Paragraph>
+      )}
+      <Table
+        rowKey="familyId"
+        loading={isLoading}
+        dataSource={data?.families ?? []}
+        pagination={false}
+        columns={[
+          { title: "Семья", dataIndex: "familyName" },
+          { title: "Долг", key: "debt", render: (_, r) => formatMinor(r.debtMinor) },
+          {
+            title: "Старейший неоплаченный период",
+            key: "oldest",
+            render: (_, r) => (r.oldestUnpaidPeriod ? `${r.oldestUnpaidPeriod.month}/${r.oldestUnpaidPeriod.year}` : "—"),
+          },
+        ]}
+      />
+    </>
+  );
+}
+
 export default function ReportsPage() {
   const { selectedBranchId } = useBranch();
   const branchId = selectedBranchId!;
@@ -137,6 +170,7 @@ export default function ReportsPage() {
             children: <AttendanceSummaryTab branchId={branchId} />,
           },
           { key: "waitlist", label: "Очередь", children: <WaitlistTab branchId={branchId} /> },
+          { key: "debt", label: "Задолженность", children: <DebtTab branchId={branchId} /> },
         ]}
       />
     </>

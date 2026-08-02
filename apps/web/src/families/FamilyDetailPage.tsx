@@ -5,21 +5,55 @@ import {
   App,
   Button,
   Card,
+  Descriptions,
   Form,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
+  Select,
   Space,
   Table,
+  Tag,
   Typography,
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { familiesApi } from "../api/families";
 import { childrenApi } from "../api/children";
-import type { Parent, TrustedPerson } from "../api/types";
+import { contractsApi } from "../api/contracts";
+import type { CreateContractInput } from "../api/contracts";
+import { discountsApi } from "../api/discounts";
+import type { CreateDiscountInput } from "../api/discounts";
+import { paymentsApi } from "../api/payments";
+import type { RecordPaymentInput } from "../api/payments";
+import { tariffsApi } from "../api/tariffs";
+import {
+  DISCOUNT_BASES,
+  PAYMENT_METHODS,
+  formatMinor,
+  type Contract,
+  type Discount,
+  type Parent,
+  type TrustedPerson,
+} from "../api/types";
 import { ApiError } from "../api/client";
 import { useBranch } from "../layout/BranchContext";
+
+const DISCOUNT_BASIS_LABELS: Record<string, string> = {
+  SECOND_CHILD: "Второй ребёнок",
+  PREPAYMENT: "Предоплата",
+  CORPORATE: "Корпоративная",
+  STAFF: "Сотруднику",
+  SOCIAL: "Льготная",
+  DIRECTOR_DECISION: "Решением директора",
+};
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Наличные",
+  CARD_ONSITE: "Картой на месте",
+  BANK_TRANSFER: "Банковский перевод",
+  ONLINE_GATEWAY: "Онлайн-оплата",
+};
 
 export default function FamilyDetailPage() {
   const { familyId = "" } = useParams();
@@ -36,6 +70,110 @@ export default function FamilyDetailPage() {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["families", branchId, familyId] });
+
+  const { data: contracts = [] } = useQuery({
+    queryKey: ["contracts", branchId, familyId],
+    queryFn: () => contractsApi.listForFamily(branchId, familyId),
+    enabled: Boolean(branchId && familyId),
+  });
+  const { data: tariffs = [] } = useQuery({
+    queryKey: ["tariffs", branchId],
+    queryFn: () => tariffsApi.listForBranch(branchId),
+    enabled: Boolean(branchId),
+  });
+  const { data: discounts = [] } = useQuery({
+    queryKey: ["discounts", branchId, familyId],
+    queryFn: () => discountsApi.listForFamily(branchId, familyId),
+    enabled: Boolean(branchId && familyId),
+  });
+  const { data: payments = [] } = useQuery({
+    queryKey: ["payments", branchId, familyId],
+    queryFn: () => paymentsApi.listForFamily(branchId, familyId),
+    enabled: Boolean(branchId && familyId),
+  });
+  const { data: balance } = useQuery({
+    queryKey: ["balance", branchId, familyId],
+    queryFn: () => paymentsApi.getBalance(branchId, familyId),
+    enabled: Boolean(branchId && familyId),
+  });
+
+  const invalidateContracts = () => queryClient.invalidateQueries({ queryKey: ["contracts", branchId, familyId] });
+  const invalidateDiscounts = () => queryClient.invalidateQueries({ queryKey: ["discounts", branchId, familyId] });
+  const invalidatePayments = () => {
+    void queryClient.invalidateQueries({ queryKey: ["payments", branchId, familyId] });
+    void queryClient.invalidateQueries({ queryKey: ["balance", branchId, familyId] });
+  };
+
+  function childName(childId: string) {
+    return family?.children?.find((c) => c.id === childId)?.fullName ?? childId;
+  }
+  function tariffName(tariffId: string) {
+    return tariffs.find((t) => t.id === tariffId)?.name ?? tariffId;
+  }
+
+  const [contractModal, setContractModal] = useState(false);
+  const [contractForm] = Form.useForm();
+  const createContract = useMutation({
+    mutationFn: (values: CreateContractInput) => contractsApi.create(branchId, values),
+    onSuccess: () => {
+      invalidateContracts();
+      setContractModal(false);
+      message.success("Договор создан");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+  const terminateContract = useMutation({
+    mutationFn: (id: string) => contractsApi.terminate(branchId, id),
+    onSuccess: () => {
+      invalidateContracts();
+      message.success("Договор расторгнут");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
+  const [discountModal, setDiscountModal] = useState(false);
+  const [discountForm] = Form.useForm();
+  const createDiscount = useMutation({
+    mutationFn: (values: CreateDiscountInput & { scope: "family" | "child" }) => {
+      const { scope, ...dto } = values;
+      return discountsApi.create(branchId, {
+        ...dto,
+        familyId: scope === "family" ? familyId : undefined,
+        childId: scope === "child" ? dto.childId : undefined,
+      });
+    },
+    onSuccess: () => {
+      invalidateDiscounts();
+      setDiscountModal(false);
+      message.success("Скидка добавлена");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+  const archiveDiscount = useMutation({
+    mutationFn: (id: string) => discountsApi.archive(branchId, id),
+    onSuccess: () => {
+      invalidateDiscounts();
+      message.success("Скидка архивирована");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
+  const [paymentModal, setPaymentModal] = useState(false);
+  const [paymentForm] = Form.useForm();
+  const recordPayment = useMutation({
+    mutationFn: (values: { amount: number; method: RecordPaymentInput["method"]; paidAt: string }) =>
+      paymentsApi.record(branchId, familyId, {
+        amountMinor: Math.round(values.amount * 100),
+        method: values.method,
+        paidAt: values.paidAt,
+      }),
+    onSuccess: () => {
+      invalidatePayments();
+      setPaymentModal(false);
+      message.success("Оплата зафиксирована");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
 
   const [parentModal, setParentModal] = useState<{ editing: Parent | null } | null>(null);
   const [trustedModal, setTrustedModal] = useState<{ editing: TrustedPerson | null } | null>(null);
@@ -233,6 +371,138 @@ export default function FamilyDetailPage() {
         />
       </Card>
 
+      <Card
+        title="Договоры"
+        extra={
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              contractForm.resetFields();
+              setContractModal(true);
+            }}
+          >
+            Новый договор
+          </Button>
+        }
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={contracts}
+          columns={[
+            { title: "№", dataIndex: "number" },
+            { title: "Ребёнок", key: "child", render: (_, c: Contract) => childName(c.childId) },
+            { title: "Тариф", key: "tariff", render: (_, c: Contract) => tariffName(c.tariffId) },
+            { title: "Начало", dataIndex: "startDate" },
+            {
+              title: "Статус",
+              dataIndex: "status",
+              render: (s: string) =>
+                s === "ACTIVE" ? <Tag color="green">Активен</Tag> : <Tag>{s}</Tag>,
+            },
+            {
+              title: "",
+              key: "actions",
+              render: (_, c: Contract) =>
+                c.status === "ACTIVE" && (
+                  <Popconfirm title="Расторгнуть договор?" onConfirm={() => terminateContract.mutate(c.id)}>
+                    <Button size="small" danger>
+                      Расторгнуть
+                    </Button>
+                  </Popconfirm>
+                ),
+            },
+          ]}
+        />
+      </Card>
+
+      <Card
+        title="Скидки"
+        extra={
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              discountForm.resetFields();
+              discountForm.setFieldsValue({ scope: "family", kind: "PERCENT" });
+              setDiscountModal(true);
+            }}
+          >
+            Добавить скидку
+          </Button>
+        }
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={discounts}
+          columns={[
+            { title: "Основание", dataIndex: "basis", render: (b: string) => DISCOUNT_BASIS_LABELS[b] },
+            {
+              title: "Размер",
+              key: "value",
+              render: (_, d: Discount) => (d.kind === "PERCENT" ? `${d.value}%` : formatMinor(d.value)),
+            },
+            {
+              title: "Область",
+              key: "scope",
+              render: (_, d: Discount) => (d.childId ? childName(d.childId) : "Вся семья"),
+            },
+            { title: "Причина", dataIndex: "reason" },
+            {
+              title: "Статус",
+              dataIndex: "isActive",
+              render: (v: boolean) => (v ? <Tag color="green">Активна</Tag> : <Tag>Архив</Tag>),
+            },
+            {
+              title: "",
+              key: "actions",
+              render: (_, d: Discount) =>
+                d.isActive && (
+                  <Button size="small" danger onClick={() => archiveDiscount.mutate(d.id)}>
+                    В архив
+                  </Button>
+                ),
+            },
+          ]}
+        />
+      </Card>
+
+      <Card
+        title="Оплаты и баланс"
+        extra={
+          <Button size="small" icon={<PlusOutlined />} onClick={() => setPaymentModal(true)}>
+            Внести оплату
+          </Button>
+        }
+      >
+        {balance && (
+          <Descriptions column={3} size="small" style={{ marginBottom: 16 }}>
+            <Descriptions.Item label="Оплачено всего">{formatMinor(balance.totalPaidMinor)}</Descriptions.Item>
+            <Descriptions.Item label="Начислено всего">{formatMinor(balance.totalInvoicedMinor)}</Descriptions.Item>
+            <Descriptions.Item label="Баланс">
+              <Typography.Text type={balance.balanceMinor < 0 ? "danger" : "success"}>
+                {formatMinor(balance.balanceMinor)}
+              </Typography.Text>
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={payments}
+          columns={[
+            { title: "Дата", dataIndex: "paidAt" },
+            { title: "Сумма", key: "amount", render: (_, p) => formatMinor(p.amountMinor) },
+            { title: "Способ", dataIndex: "method", render: (m: string) => PAYMENT_METHOD_LABELS[m] },
+          ]}
+        />
+      </Card>
+
       <Modal
         title={parentModal?.editing ? "Изменить родителя" : "Новый родитель"}
         open={Boolean(parentModal)}
@@ -306,6 +576,115 @@ export default function FamilyDetailPage() {
           </Form.Item>
           <Form.Item label="Пол" name="sex">
             <Input placeholder="М / Ж" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Новый договор"
+        open={contractModal}
+        onCancel={() => setContractModal(false)}
+        onOk={() => contractForm.submit()}
+        confirmLoading={createContract.isPending}
+        destroyOnClose
+      >
+        <Form
+          form={contractForm}
+          layout="vertical"
+          onFinish={(values) => createContract.mutate({ ...values, familyId })}
+        >
+          <Form.Item label="Ребёнок" name="childId" rules={[{ required: true, message: "Выберите ребёнка" }]}>
+            <Select options={(family.children ?? []).map((c) => ({ value: c.id, label: c.fullName }))} />
+          </Form.Item>
+          <Form.Item label="Тариф" name="tariffId" rules={[{ required: true, message: "Выберите тариф" }]}>
+            <Select options={tariffs.filter((t) => t.isActive).map((t) => ({ value: t.id, label: t.name }))} />
+          </Form.Item>
+          <Form.Item label="Номер договора" name="number" rules={[{ required: true, message: "Укажите номер" }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label="Дата начала"
+            name="startDate"
+            rules={[{ required: true, message: "Укажите дату начала" }]}
+          >
+            <Input type="date" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Новая скидка"
+        open={discountModal}
+        onCancel={() => setDiscountModal(false)}
+        onOk={() => discountForm.submit()}
+        confirmLoading={createDiscount.isPending}
+        destroyOnClose
+      >
+        <Form form={discountForm} layout="vertical" onFinish={(values) => createDiscount.mutate(values)}>
+          <Form.Item label="Область действия" name="scope">
+            <Radio.Group
+              options={[
+                { value: "family", label: "Вся семья" },
+                { value: "child", label: "Один ребёнок" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, cur) => prev.scope !== cur.scope}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("scope") === "child" && (
+                <Form.Item label="Ребёнок" name="childId" rules={[{ required: true, message: "Выберите ребёнка" }]}>
+                  <Select options={(family.children ?? []).map((c) => ({ value: c.id, label: c.fullName }))} />
+                </Form.Item>
+              )
+            }
+          </Form.Item>
+          <Form.Item label="Основание" name="basis" rules={[{ required: true, message: "Выберите основание" }]}>
+            <Select options={DISCOUNT_BASES.map((b) => ({ value: b, label: DISCOUNT_BASIS_LABELS[b] }))} />
+          </Form.Item>
+          <Form.Item label="Тип" name="kind" rules={[{ required: true, message: "Выберите тип" }]}>
+            <Radio.Group
+              options={[
+                { value: "PERCENT", label: "Процент" },
+                { value: "FIXED_AMOUNT", label: "Фиксированная сумма" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label="Размер" name="value" rules={[{ required: true, message: "Укажите размер" }]}>
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="Причина" name="reason" extra="Обязательна для скидки «решением директора»">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item
+            label="Действует с"
+            name="validFrom"
+            rules={[{ required: true, message: "Укажите дату" }]}
+          >
+            <Input type="date" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Внести оплату"
+        open={paymentModal}
+        onCancel={() => setPaymentModal(false)}
+        onOk={() => paymentForm.submit()}
+        confirmLoading={recordPayment.isPending}
+        destroyOnClose
+      >
+        <Form form={paymentForm} layout="vertical" onFinish={(values) => recordPayment.mutate(values)}>
+          <Form.Item label="Сумма (KZT)" name="amount" rules={[{ required: true, message: "Укажите сумму" }]}>
+            <InputNumber min={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item label="Способ оплаты" name="method" rules={[{ required: true, message: "Выберите способ" }]}>
+            <Select options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABELS[m] }))} />
+          </Form.Item>
+          <Form.Item label="Дата оплаты" name="paidAt" rules={[{ required: true, message: "Укажите дату" }]}>
+            <Input type="date" />
           </Form.Item>
         </Form>
       </Modal>

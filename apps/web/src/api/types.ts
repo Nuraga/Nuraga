@@ -286,3 +286,194 @@ export interface WaitlistReport {
   groups: WaitlistReportRow[];
   total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Billing (Этап 2)
+// ---------------------------------------------------------------------------
+
+export type TariffType = "MONTHLY_FULL" | "MONTHLY_HALF_DAY" | "HOURLY" | "PAY_AS_YOU_GO" | "DUTY_GROUP";
+export type RecurrencePeriod = "MONTHLY" | "ONE_TIME" | "PER_VISIT";
+export type RecalcRule = "NONE" | "MEALS_ONLY" | "FULL_DAY_WITH_THRESHOLD";
+
+export const TARIFF_TYPES: TariffType[] = [
+  "MONTHLY_FULL",
+  "MONTHLY_HALF_DAY",
+  "HOURLY",
+  "PAY_AS_YOU_GO",
+  "DUTY_GROUP",
+];
+export const RECURRENCE_PERIODS: RecurrencePeriod[] = ["MONTHLY", "ONE_TIME", "PER_VISIT"];
+export const RECALC_RULES: RecalcRule[] = ["NONE", "MEALS_ONLY", "FULL_DAY_WITH_THRESHOLD"];
+
+export interface Tariff {
+  id: string;
+  branchId: string | null;
+  name: string;
+  type: TariffType;
+  baseAmountMinor: number;
+  currency: string;
+  recurrence: RecurrencePeriod;
+  recalcRule: RecalcRule;
+  recalcThresholdDays: number | null;
+  includesDescription: string | null;
+  validFrom: string;
+  validTo: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Service {
+  id: string;
+  branchId: string;
+  name: string;
+  priceMinor: number;
+  scheduleInfo: string | null;
+  capacity: number | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ServiceEnrollment {
+  id: string;
+  childId: string;
+  serviceId: string;
+  startDate: string;
+  endDate: string | null;
+  createdAt: string;
+}
+
+export type DiscountBasis =
+  | "SECOND_CHILD"
+  | "PREPAYMENT"
+  | "CORPORATE"
+  | "STAFF"
+  | "SOCIAL"
+  | "DIRECTOR_DECISION";
+export type DiscountKind = "PERCENT" | "FIXED_AMOUNT";
+
+export const DISCOUNT_BASES: DiscountBasis[] = [
+  "SECOND_CHILD",
+  "PREPAYMENT",
+  "CORPORATE",
+  "STAFF",
+  "SOCIAL",
+  "DIRECTOR_DECISION",
+];
+export const DISCOUNT_KINDS: DiscountKind[] = ["PERCENT", "FIXED_AMOUNT"];
+
+export interface Discount {
+  id: string;
+  familyId: string | null;
+  childId: string | null;
+  basis: DiscountBasis;
+  kind: DiscountKind;
+  value: number;
+  reason: string | null;
+  validFrom: string;
+  validTo: string | null;
+  approvedById: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type ContractStatus = "DRAFT" | "ACTIVE" | "TERMINATED" | "EXPIRED";
+
+export interface Contract {
+  id: string;
+  familyId: string;
+  childId: string;
+  tariffId: string;
+  number: string;
+  startDate: string;
+  endDate: string | null;
+  status: ContractStatus;
+  fileKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tariff?: Tariff;
+}
+
+export type InvoiceStatus = "DRAFT" | "APPROVED" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
+
+export interface Invoice {
+  id: string;
+  familyId: string;
+  branchId: string;
+  year: number;
+  month: number;
+  status: InvoiceStatus;
+  totalMinor: number;
+  approvedById: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  family?: { id: string; name: string };
+  lines?: InvoiceLine[];
+}
+
+export type InvoiceLineType =
+  | "TARIFF"
+  | "SERVICE"
+  | "FINE"
+  | "RECALC"
+  | "DISCOUNT"
+  | "MANUAL_ADJUSTMENT"
+  | "PREVIOUS_BALANCE";
+
+export interface InvoiceLine {
+  id: string;
+  invoiceId: string;
+  childId: string | null;
+  serviceId: string | null;
+  type: InvoiceLineType;
+  description: string;
+  amountMinor: number;
+  ruleRef: string | null;
+  createdAt: string;
+}
+
+export type PaymentMethod = "CASH" | "CARD_ONSITE" | "BANK_TRANSFER" | "ONLINE_GATEWAY";
+
+export const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "CARD_ONSITE", "BANK_TRANSFER", "ONLINE_GATEWAY"];
+
+export interface Payment {
+  id: string;
+  familyId: string;
+  branchId: string;
+  amountMinor: number;
+  method: PaymentMethod;
+  paidAt: string;
+  externalRef: string | null;
+  recordedById: string;
+  createdAt: string;
+}
+
+export interface FamilyBalance {
+  totalPaidMinor: number;
+  totalInvoicedMinor: number;
+  balanceMinor: number;
+}
+
+export interface DebtReportRow {
+  familyId: string;
+  familyName: string;
+  debtMinor: number;
+  oldestUnpaidPeriod: { year: number; month: number } | null;
+}
+
+export interface DebtReport {
+  branchId: string;
+  families: DebtReportRow[];
+  totalDebtMinor: number;
+}
+
+export interface GenerateInvoicesResult {
+  totalFamilies: number;
+  results: { familyId: string; status: string; totalMinor?: number }[];
+}
+
+/** Minor units -> a display string in the given currency (e.g. 30000 -> "300.00 KZT"). */
+export function formatMinor(amountMinor: number, currency = "KZT"): string {
+  return `${(amountMinor / 100).toFixed(2)} ${currency}`;
+}
