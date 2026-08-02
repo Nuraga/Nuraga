@@ -28,12 +28,17 @@ import InvoicingPage from "./billing/InvoicingPage";
 import LeadsPage from "./sales/LeadsPage";
 import LeadDetailPage from "./sales/LeadDetailPage";
 import StaffTasksPage from "./sales/StaffTasksPage";
+import MyQrPage from "./staff-attendance/MyQrPage";
+import DevicesPage from "./staff-attendance/DevicesPage";
+import StaffAttendanceDashboardPage from "./staff-attendance/StaffAttendanceDashboardPage";
 import ParentProtectedRoute from "./parent/ParentProtectedRoute";
 import ParentLayout from "./parent/ParentLayout";
 import ParentHomePage from "./parent/ParentHomePage";
 import ParentBillingPage from "./parent/ParentBillingPage";
 import ParentAttendancePage from "./parent/ParentAttendancePage";
 import ParentProfilePage from "./parent/ParentProfilePage";
+import KioskLayout from "./kiosk/KioskLayout";
+import KioskPage from "./kiosk/KioskPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -58,6 +63,12 @@ export default function App() {
                     <Route path="attendance" element={<ParentAttendancePage />} />
                     <Route path="profile" element={<ParentProfilePage />} />
                   </Route>
+                </Route>
+
+                {/* Киоск — вне ProtectedRoute/BranchProvider: устройство не человек,
+                    у него своя сессия (KioskAuthProvider), а не JWT-логин. */}
+                <Route path="/kiosk" element={<KioskLayout />}>
+                  <Route index element={<KioskPage />} />
                 </Route>
 
                 <Route element={<ProtectedRoute />}>
@@ -89,6 +100,9 @@ export default function App() {
                     <Route path="/leads" element={<LeadsPage />} />
                     <Route path="/leads/:leadId" element={<LeadDetailPage />} />
                     <Route path="/tasks" element={<StaffTasksPage />} />
+                    <Route path="/my-qr" element={<MyQrPage />} />
+                    <Route path="/devices" element={<DevicesPage />} />
+                    <Route path="/staff-attendance" element={<StaffAttendanceDashboardPage />} />
                   </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

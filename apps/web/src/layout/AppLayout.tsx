@@ -18,6 +18,8 @@ import {
   HomeOutlined,
   ImportOutlined,
   LogoutOutlined,
+  QrcodeOutlined,
+  TabletOutlined,
   TeamOutlined,
   UnorderedListOutlined,
   UsergroupAddOutlined,
@@ -53,6 +55,19 @@ const NAV_ITEMS: NavItem[] = [
     label: "Задачи",
     icon: <CheckSquareOutlined />,
     roles: ["OWNER", "BRANCH_MANAGER", "TEACHER"],
+  },
+  { key: "/my-qr", label: "Мой QR", icon: <QrcodeOutlined /> },
+  {
+    key: "/staff-attendance",
+    label: "Посещаемость персонала",
+    icon: <CalendarOutlined />,
+    roles: ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT"],
+  },
+  {
+    key: "/devices",
+    label: "Устройства",
+    icon: <TabletOutlined />,
+    roles: ["OWNER", "BRANCH_MANAGER"],
   },
   {
     key: "/families",
