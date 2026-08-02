@@ -13,6 +13,18 @@ interface MfaTokenPayload {
   purpose: "mfa";
 }
 
+interface DeviceTokenPayload {
+  sub: string;
+  branchId: string;
+  purpose: "device";
+}
+
+interface CheckinTokenPayload {
+  sub: string;
+  branchId: string;
+  purpose: "checkin";
+}
+
 @Injectable()
 export class TokenService {
   constructor(
@@ -50,6 +62,45 @@ export class TokenService {
     });
     if (payload.purpose !== "mfa") throw new Error("Not an MFA token");
     return payload.sub;
+  }
+
+  /**
+   * Long-lived session token for a kiosk Device (never a human User — see
+   * schema.prisma comment above the Device model). A separate secret from
+   * the human access token means a device token can never be accepted by
+   * JwtAuthGuard even if some check forgot the `purpose` discriminator.
+   */
+  async signDeviceToken(deviceId: string, branchId: string): Promise<string> {
+    const payload: DeviceTokenPayload = { sub: deviceId, branchId, purpose: "device" };
+    return this.jwt.signAsync(payload, {
+      secret: this.config.get<string>("JWT_DEVICE_SECRET"),
+      expiresIn: this.config.get<string>("JWT_DEVICE_TTL") ?? "180d",
+    });
+  }
+
+  async verifyDeviceToken(token: string): Promise<{ deviceId: string; branchId: string }> {
+    const payload = await this.jwt.verifyAsync<DeviceTokenPayload>(token, {
+      secret: this.config.get<string>("JWT_DEVICE_SECRET"),
+    });
+    if (payload.purpose !== "device") throw new Error("Not a device token");
+    return { deviceId: payload.sub, branchId: payload.branchId };
+  }
+
+  /** ~45s token a staff member's "Мой QR" screen shows, scanned by a kiosk Device. */
+  async signCheckinToken(staffId: string, branchId: string): Promise<string> {
+    const payload: CheckinTokenPayload = { sub: staffId, branchId, purpose: "checkin" };
+    return this.jwt.signAsync(payload, {
+      secret: this.config.get<string>("JWT_CHECKIN_SECRET"),
+      expiresIn: "45s",
+    });
+  }
+
+  async verifyCheckinToken(token: string): Promise<{ staffId: string; branchId: string }> {
+    const payload = await this.jwt.verifyAsync<CheckinTokenPayload>(token, {
+      secret: this.config.get<string>("JWT_CHECKIN_SECRET"),
+    });
+    if (payload.purpose !== "checkin") throw new Error("Not a check-in token");
+    return { staffId: payload.sub, branchId: payload.branchId };
   }
 
   /** Issues a new opaque refresh token, storing only its hash. */

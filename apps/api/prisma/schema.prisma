@@ -104,6 +104,8 @@ model Branch {
   payments         Payment[]
   leads            Lead[]
   tasks            Task[]
+  devices              Device[]
+  staffAttendanceEvents StaffAttendanceEvent[]
 
   @@map("branch")
 }
@@ -465,6 +467,7 @@ model Staff {
   user   User   @relation(fields: [userId], references: [id])
   branch Branch @relation(fields: [branchId], references: [id])
   groups StaffGroup[]
+  attendanceEvents StaffAttendanceEvent[]
 
   @@map("staff")
 }
@@ -478,6 +481,67 @@ model StaffGroup {
 
   @@id([staffId, groupId])
   @@map("staff_group")
+}
+
+// ---------------------------------------------------------------------------
+// Kiosk QR check-in for staff attendance (заведующий/OWNER provisions one
+// Device per branch entrance; staff show a short-lived rotating QR from
+// their own phone; the device — never a human — scans it). A Device is
+// deliberately NOT a Role/User: it's a single-branch, single-purpose
+// credential that must never inherit human management permissions just by
+// sitting in the same auth machinery, and it must never be conflated with
+// AuthenticatedUser (see DeviceAuthGuard).
+// ---------------------------------------------------------------------------
+
+model Device {
+  id         String    @id @default(uuid())
+  branchId   String
+  name       String
+  secretHash String
+  revokedAt  DateTime?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  branch Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  events StaffAttendanceEvent[]
+
+  @@index([branchId])
+  @@map("device")
+}
+
+enum StaffAttendanceEventType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum StaffAttendanceEventSource {
+  QR
+  MANUAL_CORRECTION
+}
+
+// Append-only log of raw scan events (not a single upserted per-day row like
+// Attendance) — worked hours are always derived on the fly by pairing
+// consecutive CHECK_IN/CHECK_OUT events per staff per day, so there is only
+// one source of truth to keep in sync.
+model StaffAttendanceEvent {
+  id               String                      @id @default(uuid())
+  staffId          String
+  branchId         String
+  type             StaffAttendanceEventType
+  source           StaffAttendanceEventSource
+  occurredAt       DateTime
+  deviceId         String?
+  correctionReason String?
+  correctionById   String?
+  createdAt        DateTime                    @default(now())
+
+  staff  Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  @@index([staffId, occurredAt])
+  @@index([branchId, occurredAt])
+  @@map("staff_attendance_event")
 }
 
 // ---------------------------------------------------------------------------

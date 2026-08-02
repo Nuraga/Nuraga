@@ -10,7 +10,7 @@ import { CorrectAttendanceDto } from "./dto/correct-attendance.dto";
 // that can later amend a closed period via correction (TRD 11.3, invariant
 // #4: attendance is immutable once its period is closed, except through a
 // reasoned, audited correction).
-const TIMESHEET_CLOSE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT"];
+export const TIMESHEET_CLOSE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT"];
 
 @Injectable()
 export class TimesheetService {
