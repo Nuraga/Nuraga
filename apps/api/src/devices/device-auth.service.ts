@@ -10,6 +10,17 @@ import { ProvisionDeviceDto } from "./dto/provision-device.dto";
 
 const DEVICE_MANAGER_ROLES = ["OWNER", "BRANCH_MANAGER"] as const;
 
+// secretHash is never returned to any client — these are the only fields a
+// human-facing endpoint should ever see.
+const PUBLIC_DEVICE_SELECT = {
+  id: true,
+  branchId: true,
+  name: true,
+  revokedAt: true,
+  lastSeenAt: true,
+  createdAt: true,
+} as const;
+
 @Injectable()
 export class DeviceAuthService {
   constructor(
@@ -29,6 +40,7 @@ export class DeviceAuthService {
 
     const device = await this.prisma.device.create({
       data: { branchId, name: dto.name, secretHash },
+      select: PUBLIC_DEVICE_SELECT,
     });
     await this.audit.record({
       entity: "device",
@@ -43,7 +55,11 @@ export class DeviceAuthService {
 
   async listForBranch(user: AuthenticatedUser, branchId: string) {
     this.branchScope.assertRoleInBranch(user, [...DEVICE_MANAGER_ROLES], branchId);
-    return this.prisma.device.findMany({ where: { branchId }, orderBy: { createdAt: "desc" } });
+    return this.prisma.device.findMany({
+      where: { branchId },
+      orderBy: { createdAt: "desc" },
+      select: PUBLIC_DEVICE_SELECT,
+    });
   }
 
   async revoke(user: AuthenticatedUser, branchId: string, deviceId: string) {
