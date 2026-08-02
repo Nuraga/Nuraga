@@ -102,6 +102,7 @@ model Branch {
   services         Service[]
   invoices         Invoice[]
   payments         Payment[]
+  leads            Lead[]
 
   @@map("branch")
 }
@@ -160,6 +161,7 @@ model Family {
   contracts      Contract[]
   invoices       Invoice[]
   payments       Payment[]
+  tasks          Task[]
 
   @@index([branchId])
   @@map("family")
@@ -327,6 +329,7 @@ model WaitlistEntry {
   branchId   String
   groupId    String
   childId    String?
+  leadId     String?
   leadName   String?
   priority   Int      @default(0)
   queuedAt   DateTime @default(now())
@@ -334,6 +337,7 @@ model WaitlistEntry {
   branch Branch @relation(fields: [branchId], references: [id])
   group  Group  @relation(fields: [groupId], references: [id])
   child  Child? @relation(fields: [childId], references: [id])
+  lead   Lead?  @relation(fields: [leadId], references: [id])
 
   @@index([branchId, groupId])
   @@map("waitlist_entry")
@@ -735,4 +739,115 @@ model PaymentAllocation {
   @@index([paymentId])
   @@index([invoiceId])
   @@map("payment_allocation")
+}
+
+// ---------------------------------------------------------------------------
+// Sales / leads (Этап 3, MVP slice — ТЗ §3)
+// ---------------------------------------------------------------------------
+
+model LeadSource {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  leads Lead[]
+
+  @@map("lead_source")
+}
+
+model LeadRejectionReason {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  leads Lead[]
+
+  @@map("lead_rejection_reason")
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  TOUR_SCHEDULED
+  TOUR_DONE
+  TRIAL_DAY
+  CONTRACT_SIGNING
+  ENROLLED
+  REJECTED
+  WAITLISTED
+}
+
+// stageEnteredAt tracks current-stage duration; full stage history is
+// reconstructable from AuditLog diffs if/when a funnel-duration report is
+// built (ТЗ §3.5) — no dedicated history table for this MVP pass.
+model Lead {
+  id                     String    @id @default(uuid())
+  branchId               String
+  parentFullName         String
+  parentPhone            String
+  parentPhoneNormalized  String // digits-only, computed on write — cross-branch dedup key (ТЗ §3.1)
+  parentEmail            String?
+  childFullName          String?
+  childBirthDate         DateTime?
+  targetDate             DateTime?
+  sourceId               String?
+  stage                  LeadStage @default(NEW)
+  stageEnteredAt         DateTime  @default(now())
+  rejectionReasonId      String?
+  rejectionComment       String?
+  responsibleUserId      String
+  utmSource              String?
+  utmMedium              String?
+  utmCampaign            String?
+  convertedFamilyId      String? // set by POST /leads/:id/convert, plain scalar (no relation, matches Discount.approvedById idiom)
+  convertedChildId       String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  branch          Branch               @relation(fields: [branchId], references: [id])
+  source          LeadSource?          @relation(fields: [sourceId], references: [id])
+  rejectionReason LeadRejectionReason? @relation(fields: [rejectionReasonId], references: [id])
+
+  activities      LeadActivity[]
+  tasks           Task[]
+  waitlistEntries WaitlistEntry[]
+
+  @@index([branchId, stage])
+  @@index([parentPhoneNormalized])
+  @@map("lead")
+}
+
+model LeadActivity {
+  id        String   @id @default(uuid())
+  leadId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_activity")
+}
+
+// Polymorphic: exactly one of leadId/familyId is set (app-level check,
+// same idiom as Discount.familyId/childId).
+model Task {
+  id           String    @id @default(uuid())
+  leadId       String?
+  familyId     String?
+  description  String
+  dueAt        DateTime
+  assignedToId String
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([familyId])
+  @@index([assignedToId])
+  @@map("task")
 }
