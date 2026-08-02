@@ -1,14 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import type { Role } from "@prisma/client";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import type { Role, TaskStatus } from "@prisma/client";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { BranchScopeService } from "../../common/access/branch-scope.service";
 import { AuditService } from "../../common/audit/audit.service";
 import type { AuthenticatedUser } from "../../common/access/branch-access.types";
 import { CreateTaskDto } from "./dto/create-task.dto";
 
-// ТЗ §2.2 has no dedicated "Задачи" row — reusing the "Лиды" row's roles
-// since tasks in this MVP pass are always lead-linked (family-linked tasks
-// are modeled but not yet exposed in the UI).
+// ТЗ §2.2 has no dedicated "Задачи" row — reusing the "Лиды" row's roles for
+// management access. Tasks with neither leadId nor familyId are general
+// staff assignments (заведующий -> воспитатель/няня); any staff member can
+// read/update the status of a task assigned to them regardless of role.
 const TASK_READ_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
 const TASK_WRITE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
 
@@ -17,6 +18,8 @@ export interface TaskFilters {
   familyId?: string;
   assignedToId?: string;
   onlyOpen?: boolean;
+  /** "staff" restricts to general staff assignments (no lead/family link) — used by the kanban board. */
+  scope?: "staff";
 }
 
 @Injectable()
@@ -28,11 +31,17 @@ export class TasksService {
   ) {}
 
   async list(user: AuthenticatedUser, branchId: string, filters: TaskFilters) {
-    this.branchScope.assertRoleInBranch(user, TASK_READ_ROLES, branchId);
+    const isOwnTasksOnly = Boolean(filters.assignedToId) && filters.assignedToId === user.id;
+    if (isOwnTasksOnly) {
+      this.branchScope.assertBranchAccess(user, branchId);
+    } else {
+      this.branchScope.assertRoleInBranch(user, TASK_READ_ROLES, branchId);
+    }
 
     return this.prisma.task.findMany({
       where: {
-        OR: [{ lead: { branchId } }, { family: { branchId } }],
+        branchId,
+        ...(filters.scope === "staff" ? { leadId: null, familyId: null } : {}),
         ...(filters.leadId ? { leadId: filters.leadId } : {}),
         ...(filters.familyId ? { familyId: filters.familyId } : {}),
         ...(filters.assignedToId ? { assignedToId: filters.assignedToId } : {}),
@@ -45,10 +54,8 @@ export class TasksService {
   async create(user: AuthenticatedUser, branchId: string, dto: CreateTaskDto) {
     this.branchScope.assertRoleInBranch(user, TASK_WRITE_ROLES, branchId);
 
-    const hasLead = Boolean(dto.leadId);
-    const hasFamily = Boolean(dto.familyId);
-    if (hasLead === hasFamily) {
-      throw new BadRequestException("Provide exactly one of leadId or familyId");
+    if (dto.leadId && dto.familyId) {
+      throw new BadRequestException("A task cannot be linked to both a lead and a family");
     }
 
     if (dto.leadId) await this.assertLeadInBranch(branchId, dto.leadId);
@@ -56,6 +63,7 @@ export class TasksService {
 
     const task = await this.prisma.task.create({
       data: {
+        branchId,
         leadId: dto.leadId,
         familyId: dto.familyId,
         description: dto.description,
@@ -74,34 +82,36 @@ export class TasksService {
   }
 
   async complete(user: AuthenticatedUser, branchId: string, id: string) {
+    return this.updateStatus(user, branchId, id, "DONE");
+  }
+
+  async updateStatus(user: AuthenticatedUser, branchId: string, id: string, status: TaskStatus) {
     const existing = await this.getInBranch(user, branchId, id);
+
+    if (!this.branchScope.hasAnyRoleInBranch(user, TASK_WRITE_ROLES, branchId) && existing.assignedToId !== user.id) {
+      throw new ForbiddenException("You can only update tasks assigned to you");
+    }
 
     const task = await this.prisma.task.update({
       where: { id },
-      data: { completedAt: new Date() },
+      data: { status, completedAt: status === "DONE" ? new Date() : null },
     });
     await this.audit.record({
       entity: "task",
       entityId: id,
       action: "update",
-      oldValue: { completedAt: existing.completedAt },
-      newValue: { event: "complete" },
+      oldValue: { status: existing.status },
+      newValue: { status },
       actorId: user.id,
     });
     return task;
   }
 
   private async getInBranch(user: AuthenticatedUser, branchId: string, id: string) {
-    this.branchScope.assertRoleInBranch(user, TASK_WRITE_ROLES, branchId);
+    this.branchScope.assertBranchAccess(user, branchId);
 
-    const task = await this.prisma.task.findUnique({
-      where: { id },
-      include: { lead: { select: { branchId: true } }, family: { select: { branchId: true } } },
-    });
-    if (!task) throw new NotFoundException("Task not found");
-
-    const taskBranchId = task.lead?.branchId ?? task.family?.branchId;
-    if (taskBranchId !== branchId) throw new NotFoundException("Task not found");
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task || task.branchId !== branchId) throw new NotFoundException("Task not found");
     return task;
   }
 

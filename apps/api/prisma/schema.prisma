@@ -103,6 +103,7 @@ model Branch {
   invoices         Invoice[]
   payments         Payment[]
   leads            Lead[]
+  tasks            Task[]
 
   @@map("branch")
 }
@@ -864,22 +865,36 @@ model LeadActivity {
   @@map("lead_activity")
 }
 
-// Polymorphic: exactly one of leadId/familyId is set (app-level check,
-// same idiom as Discount.familyId/childId).
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+// leadId/familyId are optional and mutually exclusive (app-level check, same
+// idiom as Discount.familyId/childId); when both are unset the task is a
+// general staff assignment (e.g. branch manager -> teacher/nanny), scoped
+// only by branchId. status drives the kanban board; completedAt is kept in
+// sync with status so the older OPEN/DONE/OVERDUE-derivation on lead/family
+// task widgets keeps working unchanged.
 model Task {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
+  branchId     String
   leadId       String?
   familyId     String?
   description  String
   dueAt        DateTime
   assignedToId String
+  status       TaskStatus @default(TODO)
   completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
+  branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   family Family? @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
+  @@index([branchId])
   @@index([leadId])
   @@index([familyId])
   @@index([assignedToId])
