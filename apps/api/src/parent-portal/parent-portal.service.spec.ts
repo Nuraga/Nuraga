@@ -21,6 +21,7 @@ describe("ParentPortalService", () => {
 
   let prisma: any;
   let audit: { record: jest.Mock };
+  let fileUrls: { sign: jest.Mock };
   let service: ParentPortalService;
 
   beforeEach(() => {
@@ -51,7 +52,8 @@ describe("ParentPortalService", () => {
       },
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
-    service = new ParentPortalService(prisma, new ParentAccessService(), audit as any);
+    fileUrls = { sign: jest.fn(() => Promise.resolve("signed-token")) };
+    service = new ParentPortalService(prisma, new ParentAccessService(), audit as any, fileUrls as any);
   });
 
   it("rejects every method for a staff user with no parent profile", async () => {

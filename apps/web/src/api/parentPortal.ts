@@ -1,5 +1,15 @@
 import { api } from "./client";
-import type { AbsenceRequest, Attendance, Family, FamilyBalance, Invoice, MealType, Payment } from "./types";
+import type {
+  AbsenceRequest,
+  Attendance,
+  ChildPhotoConsent,
+  Family,
+  FamilyBalance,
+  Invoice,
+  MealType,
+  ParentPhoto,
+  Payment,
+} from "./types";
 
 export interface CreateAbsenceRequestInput {
   dateFrom: string;
@@ -25,4 +35,8 @@ export const parentPortalApi = {
     api.post<AbsenceRequest>(`/parent/children/${childId}/absence-requests`, dto),
   listAbsenceRequests: () => api.get<AbsenceRequest[]>("/parent/absence-requests"),
   todayMenu: () => api.get<TodayMenuItem[]>("/parent/menu/today"),
+  photos: () => api.get<ParentPhoto[]>("/parent/photos"),
+  photoConsents: () => api.get<ChildPhotoConsent[]>("/parent/photo-consents"),
+  setPhotoConsent: (childId: string, consent: boolean) =>
+    api.post<ChildPhotoConsent>(`/parent/children/${childId}/photo-consent`, { consent }),
 };

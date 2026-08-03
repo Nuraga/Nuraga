@@ -2,9 +2,24 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ParentAccessService } from "../common/access/parent-access.service";
 import { AuditService } from "../common/audit/audit.service";
+import { FileUrlService } from "../common/storage/file-url.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import type { FamilyBalance } from "../billing/payments/payments.service";
 import { CreateAbsenceRequestDto } from "./dto/create-absence-request.dto";
+
+export interface ParentPhotoView {
+  id: string;
+  groupId: string;
+  caption: string | null;
+  takenAt: string;
+  downloadUrl: string;
+}
+
+export interface ChildPhotoConsentView {
+  childId: string;
+  fullName: string;
+  consent: boolean;
+}
 
 const OPEN_OR_SETTLED_INVOICE_STATUSES = ["APPROVED", "PARTIALLY_PAID", "PAID"] as const;
 const MAX_ABSENCE_REQUEST_DAYS = 60;
@@ -24,6 +39,7 @@ export class ParentPortalService {
     private readonly prisma: PrismaService,
     private readonly parentAccess: ParentAccessService,
     private readonly audit: AuditService,
+    private readonly fileUrls: FileUrlService,
   ) {}
 
   async getMe(user: AuthenticatedUser) {
@@ -138,6 +154,79 @@ export class ParentPortalService {
     });
 
     return items.map((item) => ({ mealType: item.mealType, dishName: item.dish.name }));
+  }
+
+  /** ТЗ §7.4 photo feed — every photo posted to any of the family's children's groups, newest first. Consent never filters this: it only gates what a *staff uploader* is warned about (PhotosService.consentGaps), not what a parent can see of their own child's group. */
+  async photos(user: AuthenticatedUser): Promise<ParentPhotoView[]> {
+    const familyId = this.parentAccess.assertFamilyId(user);
+
+    const children = await this.prisma.child.findMany({
+      where: { familyId, groupId: { not: null } },
+      select: { groupId: true },
+    });
+    const groupIds = [...new Set(children.map((c) => c.groupId!).filter(Boolean))];
+    if (groupIds.length === 0) return [];
+
+    const photos = await this.prisma.photo.findMany({
+      where: { groupId: { in: groupIds } },
+      orderBy: { takenAt: "desc" },
+      take: 100,
+    });
+
+    return Promise.all(
+      photos.map(async (photo) => ({
+        id: photo.id,
+        groupId: photo.groupId,
+        caption: photo.caption,
+        takenAt: photo.takenAt.toISOString(),
+        downloadUrl: await this.signPhotoUrl(photo),
+      })),
+    );
+  }
+
+  async getPhotoConsents(user: AuthenticatedUser): Promise<ChildPhotoConsentView[]> {
+    const familyId = this.parentAccess.assertFamilyId(user);
+
+    const children = await this.prisma.child.findMany({
+      where: { familyId },
+      select: { id: true, fullName: true, photoConsent: { select: { consent: true } } },
+    });
+
+    return children.map((c) => ({
+      childId: c.id,
+      fullName: c.fullName,
+      consent: c.photoConsent?.consent ?? false,
+    }));
+  }
+
+  async setPhotoConsent(user: AuthenticatedUser, childId: string, consent: boolean) {
+    const familyId = this.parentAccess.assertFamilyId(user);
+    await this.assertChildInFamily(familyId, childId);
+
+    const updated = await this.prisma.childPhotoConsent.upsert({
+      where: { childId },
+      create: { childId, consent, updatedByParentId: user.parentProfile!.id },
+      update: { consent, updatedByParentId: user.parentProfile!.id },
+    });
+
+    await this.audit.record({
+      entity: "child_photo_consent",
+      entityId: childId,
+      action: "update",
+      newValue: { consent },
+      actorId: user.id,
+    });
+
+    return updated;
+  }
+
+  private async signPhotoUrl(photo: { fileKey: string; mimeType: string; fileName: string }): Promise<string> {
+    const token = await this.fileUrls.sign({
+      key: photo.fileKey,
+      contentType: photo.mimeType,
+      fileName: photo.fileName,
+    });
+    return `/api/files/${token}`;
   }
 
   private async assertChildInFamily(familyId: string, childId: string): Promise<void> {

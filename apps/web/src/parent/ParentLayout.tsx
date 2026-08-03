@@ -5,6 +5,7 @@ import {
   DollarOutlined,
   HomeOutlined,
   LogoutOutlined,
+  PictureOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { key: "/parent", label: "Главная", icon: <HomeOutlined /> },
   { key: "/parent/billing", label: "Счета", icon: <DollarOutlined /> },
   { key: "/parent/attendance", label: "Посещаемость", icon: <CalendarOutlined /> },
+  { key: "/parent/photos", label: "Фото", icon: <PictureOutlined /> },
   { key: "/parent/profile", label: "Профиль", icon: <UserOutlined /> },
 ];
 

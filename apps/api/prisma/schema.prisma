@@ -44,6 +44,7 @@ model User {
   staffProfile      Staff?
   refreshTokens     RefreshToken[]
   auditLogEntries   AuditLog[]
+  uploadedPhotos    Photo[]
 
   @@map("user")
 }
@@ -107,6 +108,7 @@ model Branch {
   devices              Device[]
   staffAttendanceEvents StaffAttendanceEvent[]
   menuItems             MenuItem[]
+  photos                Photo[]
 
   @@map("branch")
 }
@@ -141,6 +143,7 @@ model Group {
   waitlistEntries WaitlistEntry[]
   attendances     Attendance[]
   staff           StaffGroup[]
+  photos          Photo[]
 
   @@index([branchId])
   @@map("group")
@@ -186,7 +189,8 @@ model Parent {
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
 
-  absenceRequests AbsenceRequest[]
+  absenceRequests      AbsenceRequest[]
+  photoConsentUpdates  ChildPhotoConsent[]
 
   @@index([familyId])
   @@map("parent")
@@ -245,6 +249,7 @@ model Child {
   invoiceLines    InvoiceLine[]
   absenceRequests AbsenceRequest[]
   allergens       ChildAllergen[]
+  photoConsent    ChildPhotoConsent?
 
   @@index([familyId])
   @@index([groupId])
@@ -339,6 +344,52 @@ model MenuItem {
 
   @@index([branchId, date])
   @@map("menu_item")
+}
+
+// ---------------------------------------------------------------------------
+// Photo feed (Этап 4 leftover — ТЗ §7): a teacher/manager posts photos for
+// their group; parents of children in that group see them in a chronological
+// feed. Consent is informational only, the same non-blocking pattern as the
+// menu module's allergen conflicts (see MenuService.computeConflicts): it
+// warns the uploader which children in the group lack consent so they can be
+// framed out of the shot, but it never blocks an upload or hides a photo.
+// ---------------------------------------------------------------------------
+
+model Photo {
+  id           String   @id @default(uuid())
+  branchId     String
+  groupId      String
+  fileKey      String
+  fileName     String
+  mimeType     String
+  caption      String?
+  takenAt      DateTime @default(now())
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  branch     Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  group      Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  uploadedBy User   @relation(fields: [uploadedById], references: [id])
+
+  @@index([branchId])
+  @@index([groupId, takenAt])
+  @@map("photo")
+}
+
+// One row per child; consent defaults to false (explicit opt-in) and is
+// granted/revoked by a parent of the child's family — see
+// ParentPortalService.setPhotoConsent. Mirrors ChildMedical's 1:1 shape.
+model ChildPhotoConsent {
+  id                String   @id @default(uuid())
+  childId           String   @unique
+  consent           Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
+  updatedByParentId String?
+
+  child           Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  updatedByParent Parent? @relation(fields: [updatedByParentId], references: [id])
+
+  @@map("child_photo_consent")
 }
 
 // Effective-dated transfers, suspensions, discharges — append-only.

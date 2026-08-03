@@ -19,6 +19,7 @@ import {
   HomeOutlined,
   ImportOutlined,
   LogoutOutlined,
+  PictureOutlined,
   QrcodeOutlined,
   TabletOutlined,
   TeamOutlined,
@@ -71,6 +72,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["OWNER", "BRANCH_MANAGER"],
   },
   { key: "/menu", label: "Меню", icon: <CoffeeOutlined /> },
+  { key: "/photos", label: "Фотолента", icon: <PictureOutlined /> },
   {
     key: "/families",
     label: "Семьи",

@@ -8,7 +8,7 @@ build/
 coverage/
 .DS_Store
 Thumbs.db
-storage/local/
+apps/api/storage/local/
 .turbo/
 *.tsbuildinfo
 .claude/settings.local.json

@@ -31,6 +31,7 @@ import { ParentPortalModule } from "./parent-portal/parent-portal.module";
 import { DevicesModule } from "./devices/devices.module";
 import { StaffAttendanceModule } from "./staff-attendance/staff-attendance.module";
 import { MenuModule } from "./menu/menu.module";
+import { PhotosModule } from "./photos/photos.module";
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { MenuModule } from "./menu/menu.module";
     DevicesModule,
     StaffAttendanceModule,
     MenuModule,
+    PhotosModule,
   ],
   providers: [
     // RolesGuard is applied network-wide; routes without @Roles(...) pass

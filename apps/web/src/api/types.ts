@@ -230,6 +230,40 @@ export interface MenuItem {
   conflicts: MenuConflict[];
 }
 
+// ---------------------------------------------------------------------------
+// Photo feed (Этап 4 leftover — ТЗ §7.4)
+// ---------------------------------------------------------------------------
+
+export interface Photo {
+  id: string;
+  groupId: string;
+  caption: string | null;
+  takenAt: string;
+  uploadedById: string;
+  createdAt: string;
+  downloadUrl: string;
+}
+
+export interface PhotoConsentGap {
+  childId: string;
+  fullName: string;
+}
+
+export interface ChildPhotoConsent {
+  childId: string;
+  fullName: string;
+  consent: boolean;
+}
+
+/** Parent-facing photo view — no uploadedById/createdAt, that's staff-only. */
+export interface ParentPhoto {
+  id: string;
+  groupId: string;
+  caption: string | null;
+  takenAt: string;
+  downloadUrl: string;
+}
+
 export interface WaitlistEntry {
   id: string;
   branchId: string;

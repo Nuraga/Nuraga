@@ -31,12 +31,14 @@ import StaffTasksPage from "./sales/StaffTasksPage";
 import MyQrPage from "./staff-attendance/MyQrPage";
 import DevicesPage from "./staff-attendance/DevicesPage";
 import MenuPage from "./menu/MenuPage";
+import PhotosPage from "./photos/PhotosPage";
 import StaffAttendanceDashboardPage from "./staff-attendance/StaffAttendanceDashboardPage";
 import ParentProtectedRoute from "./parent/ParentProtectedRoute";
 import ParentLayout from "./parent/ParentLayout";
 import ParentHomePage from "./parent/ParentHomePage";
 import ParentBillingPage from "./parent/ParentBillingPage";
 import ParentAttendancePage from "./parent/ParentAttendancePage";
+import ParentPhotosPage from "./parent/ParentPhotosPage";
 import ParentProfilePage from "./parent/ParentProfilePage";
 import KioskLayout from "./kiosk/KioskLayout";
 import KioskPage from "./kiosk/KioskPage";
@@ -62,6 +64,7 @@ export default function App() {
                     <Route index element={<ParentHomePage />} />
                     <Route path="billing" element={<ParentBillingPage />} />
                     <Route path="attendance" element={<ParentAttendancePage />} />
+                    <Route path="photos" element={<ParentPhotosPage />} />
                     <Route path="profile" element={<ParentProfilePage />} />
                   </Route>
                 </Route>
@@ -105,6 +108,7 @@ export default function App() {
                     <Route path="/devices" element={<DevicesPage />} />
                     <Route path="/staff-attendance" element={<StaffAttendanceDashboardPage />} />
                     <Route path="/menu" element={<MenuPage />} />
+                    <Route path="/photos" element={<PhotosPage />} />
                   </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
