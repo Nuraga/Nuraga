@@ -5,6 +5,7 @@ import type { MenuProps } from "antd";
 import {
   ApartmentOutlined,
   AccountBookOutlined,
+  AreaChartOutlined,
   BankOutlined,
   BarChartOutlined,
   BookOutlined,
@@ -43,6 +44,12 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: "/", label: "Главная", icon: <HomeOutlined /> },
+  {
+    key: "/network-analytics",
+    label: "Аналитика сети",
+    icon: <AreaChartOutlined />,
+    roles: ["OWNER", "SUPERADMIN"],
+  },
   { key: "/branches", label: "Филиалы", icon: <BankOutlined />, roles: ["OWNER", "SUPERADMIN"] },
   { key: "/groups", label: "Группы", icon: <ApartmentOutlined /> },
   { key: "/staff", label: "Сотрудники", icon: <TeamOutlined /> },

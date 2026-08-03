@@ -686,6 +686,37 @@ export interface FunnelReport {
   avgDaysToEnroll: number | null;
 }
 
+// ---------------------------------------------------------------------------
+// Network-wide owner analytics (ТЗ §9.1 — Этап 5)
+// ---------------------------------------------------------------------------
+
+export interface BranchOccupancyRow {
+  branchId: string;
+  branchName: string;
+  enrolled: number;
+  plannedCapacity: number;
+  maxCapacity: number;
+}
+
+export interface NetworkMonthRow {
+  year: number;
+  month: number;
+  enrolledCount: number;
+  dischargedCount: number;
+  invoicedMinor: number;
+  paidMinor: number;
+  newLeads: number;
+  enrolledLeads: number;
+  conversionRate: number;
+  avgAttendanceRate: number | null;
+}
+
+export interface NetworkDashboard {
+  occupancy: BranchOccupancyRow[];
+  occupancyTotals: { enrolled: number; plannedCapacity: number; maxCapacity: number };
+  monthly: NetworkMonthRow[];
+}
+
 export interface GenerateInvoicesResult {
   totalFamilies: number;
   results: { familyId: string; status: string; totalMinor?: number }[];
