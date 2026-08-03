@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DatePicker, Select, Space, Table, Tabs, Typography } from "antd";
+import { DatePicker, Descriptions, Select, Space, Table, Tabs, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { reportsApi } from "../api/reports";
 import { groupsApi } from "../api/groups";
 import {
   ATTENDANCE_STATUSES,
   DISCOUNT_BASIS_LABELS,
+  LEAD_STAGE_LABELS,
   PAYMENT_METHOD_LABELS,
   formatMinor,
   type InvoiceStatus,
 } from "../api/types";
 import { useBranch } from "../layout/BranchContext";
+import { useBranchRoles, hasAnyRole } from "../auth/roles";
+
+const FUNNEL_READ_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER"] as const;
 
 const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   DRAFT: "Проект",
@@ -310,9 +314,67 @@ function PortionsTab({ branchId }: { branchId: string }) {
   );
 }
 
+function FunnelTab({ branchId }: { branchId: string }) {
+  const [month, setMonth] = useState<Dayjs>(dayjs());
+  const { data, isLoading } = useQuery({
+    queryKey: ["reports", "funnel", branchId, month.year(), month.month()],
+    queryFn: () => reportsApi.funnel(branchId, month.year(), month.month() + 1),
+    enabled: Boolean(branchId),
+  });
+
+  return (
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+      </Space>
+      {data && (
+        <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="Всего лидов">{data.totalLeads}</Descriptions.Item>
+          <Descriptions.Item label="Зачислено">
+            {data.enrolledCount} ({Math.round(data.conversionRate * 100)}%)
+          </Descriptions.Item>
+          <Descriptions.Item label="Отказы">
+            {data.rejectedCount} ({Math.round(data.rejectionRate * 100)}%)
+          </Descriptions.Item>
+          <Descriptions.Item label="Среднее время до зачисления">
+            {data.avgDaysToEnroll === null ? "—" : `${data.avgDaysToEnroll.toFixed(1)} дн.`}
+          </Descriptions.Item>
+        </Descriptions>
+      )}
+      <Table
+        rowKey="stage"
+        loading={isLoading}
+        dataSource={data?.stages ?? []}
+        pagination={false}
+        style={{ marginBottom: 24 }}
+        columns={[
+          { title: "Стадия", dataIndex: "stage", render: (s: keyof typeof LEAD_STAGE_LABELS) => LEAD_STAGE_LABELS[s] },
+          { title: "Лидов сейчас на стадии", dataIndex: "count" },
+        ]}
+      />
+      {data && data.rejectionBreakdown.length > 0 && (
+        <>
+          <Typography.Title level={5}>Причины отказов</Typography.Title>
+          <Table
+            rowKey="reasonName"
+            dataSource={data.rejectionBreakdown}
+            pagination={false}
+            columns={[
+              { title: "Причина", dataIndex: "reasonName" },
+              { title: "Количество", dataIndex: "count" },
+            ]}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
 export default function ReportsPage() {
   const { selectedBranchId } = useBranch();
   const branchId = selectedBranchId!;
+  const branchRoles = useBranchRoles(branchId);
+  const canSeeFunnel = hasAnyRole(branchRoles, [...FUNNEL_READ_ROLES]);
 
   return (
     <>
@@ -331,6 +393,9 @@ export default function ReportsPage() {
           { key: "payments", label: "Оплаты", children: <PaymentsTab branchId={branchId} /> },
           { key: "discounts", label: "Скидки", children: <DiscountsTab branchId={branchId} /> },
           { key: "portions", label: "Порции", children: <PortionsTab branchId={branchId} /> },
+          ...(canSeeFunnel
+            ? [{ key: "funnel", label: "Воронка продаж", children: <FunnelTab branchId={branchId} /> }]
+            : []),
         ]}
       />
     </>

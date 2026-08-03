@@ -1,10 +1,26 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import type { AttendanceStatus } from "@prisma/client";
+import type { AttendanceStatus, LeadStage, Role } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { GroupCapacityService } from "../groups/group-capacity.service";
 import { CHILD_READ_ROLES } from "../children/child-access.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
+
+// Same audience as LeadsService's own LEAD_READ_ROLES (private there) — an
+// Accountant can see money reports but not the sales pipeline.
+const FUNNEL_READ_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
+
+// Active-pipeline stages in canonical funnel order, mirrors the frontend's
+// LEAD_BOARD_STAGES; WAITLISTED is reported separately since it's a side
+// branch (queued, not progressing), not a step "further" than CONTRACT_SIGNING.
+const FUNNEL_STAGES: LeadStage[] = [
+  "NEW",
+  "CONTACTED",
+  "TOUR_SCHEDULED",
+  "TOUR_DONE",
+  "TRIAL_DAY",
+  "CONTRACT_SIGNING",
+];
 
 const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   "PRESENT",
@@ -327,5 +343,68 @@ export class ReportsService {
     });
 
     return { branchId, date, groups: rows, total: rows.reduce((sum, r) => sum + r.portionsNeeded, 0) };
+  }
+
+  /**
+   * Воронка продаж (ТЗ §9.2) — for leads created in the selected month:
+   * current distribution across stages, conversion to ENROLLED, rejection
+   * breakdown by reason, average days to enrollment. Stage counts are a
+   * snapshot of "where the lead is now", not a "passed through this stage"
+   * history — LeadsService.updateStage doesn't enforce forward-only
+   * progression and there's no dedicated stage-history table, so a lead
+   * that skipped or moved backward through stages can't be reconstructed
+   * without parsing AuditLog (out of scope for this pass).
+   */
+  async funnelReport(user: AuthenticatedUser, branchId: string, year: number, month: number) {
+    this.branchScope.assertRoleInBranch(user, FUNNEL_READ_ROLES, branchId);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      throw new BadRequestException("month must be an integer between 1 and 12");
+    }
+
+    const from = new Date(Date.UTC(year, month - 1, 1));
+    const to = new Date(Date.UTC(year, month, 1));
+
+    const leads = await this.prisma.lead.findMany({
+      where: { branchId, createdAt: { gte: from, lt: to } },
+      include: { rejectionReason: { select: { name: true } } },
+    });
+
+    const reportedStages: LeadStage[] = [...FUNNEL_STAGES, "WAITLISTED"];
+    const stageCounts = new Map<LeadStage, number>(reportedStages.map((stage) => [stage, 0]));
+    for (const lead of leads) {
+      if (stageCounts.has(lead.stage)) {
+        stageCounts.set(lead.stage, (stageCounts.get(lead.stage) ?? 0) + 1);
+      }
+    }
+
+    const enrolled = leads.filter((l) => l.stage === "ENROLLED");
+    const rejected = leads.filter((l) => l.stage === "REJECTED");
+
+    const rejectionCounts = new Map<string, number>();
+    for (const lead of rejected) {
+      const name = lead.rejectionReason?.name ?? "Без указания причины";
+      rejectionCounts.set(name, (rejectionCounts.get(name) ?? 0) + 1);
+    }
+
+    const avgDaysToEnroll =
+      enrolled.length === 0
+        ? null
+        : enrolled.reduce((sum, l) => sum + (l.stageEnteredAt.getTime() - l.createdAt.getTime()), 0) /
+          enrolled.length /
+          (24 * 60 * 60 * 1000);
+
+    return {
+      branchId,
+      year,
+      month,
+      totalLeads: leads.length,
+      stages: reportedStages.map((stage) => ({ stage, count: stageCounts.get(stage) ?? 0 })),
+      enrolledCount: enrolled.length,
+      conversionRate: leads.length === 0 ? 0 : enrolled.length / leads.length,
+      rejectedCount: rejected.length,
+      rejectionRate: leads.length === 0 ? 0 : rejected.length / leads.length,
+      rejectionBreakdown: [...rejectionCounts.entries()].map(([reasonName, count]) => ({ reasonName, count })),
+      avgDaysToEnroll,
+    };
   }
 }

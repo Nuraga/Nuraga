@@ -662,6 +662,30 @@ export interface PortionsReport {
   total: number;
 }
 
+export interface FunnelStageRow {
+  stage: LeadStage;
+  count: number;
+}
+
+export interface FunnelRejectionRow {
+  reasonName: string;
+  count: number;
+}
+
+export interface FunnelReport {
+  branchId: string;
+  year: number;
+  month: number;
+  totalLeads: number;
+  stages: FunnelStageRow[];
+  enrolledCount: number;
+  conversionRate: number;
+  rejectedCount: number;
+  rejectionRate: number;
+  rejectionBreakdown: FunnelRejectionRow[];
+  avgDaysToEnroll: number | null;
+}
+
 export interface GenerateInvoicesResult {
   totalFamilies: number;
   results: { familyId: string; status: string; totalMinor?: number }[];

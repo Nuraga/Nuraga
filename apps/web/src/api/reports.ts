@@ -3,6 +3,7 @@ import type {
   AttendanceSummaryReport,
   DebtReport,
   DiscountsReport,
+  FunnelReport,
   InvoicesReport,
   OccupancyReport,
   PaymentsReport,
@@ -28,4 +29,6 @@ export const reportsApi = {
     api.get<DiscountsReport>(`/branches/${branchId}/reports/discounts`, { activeOnly }),
   portions: (branchId: string, date: string) =>
     api.get<PortionsReport>(`/branches/${branchId}/reports/portions`, { date }),
+  funnel: (branchId: string, year: number, month: number) =>
+    api.get<FunnelReport>(`/branches/${branchId}/reports/funnel`, { year, month }),
 };

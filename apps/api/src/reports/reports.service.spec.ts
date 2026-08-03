@@ -51,6 +51,7 @@ describe("ReportsService", () => {
         findMany: jest.fn(() => Promise.resolve([])),
       },
       discount: { findMany: jest.fn(() => Promise.resolve([])) },
+      lead: { findMany: jest.fn(() => Promise.resolve([])) },
     };
     capacity = {
       getOccupancy: jest.fn((groupId: string) =>
@@ -270,6 +271,70 @@ describe("ReportsService", () => {
       const report = await service.portionsToday(manager, branchId, "2026-08-03");
 
       expect(report.groups.find((g: any) => g.groupId === "g1")?.portionsNeeded).toBe(8);
+    });
+  });
+
+  describe("funnelReport", () => {
+    it("rejects a Teacher — sales pipeline isn't Accountant/Teacher audience", async () => {
+      await expect(service.funnelReport(teacher, branchId, 2026, 8)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("rejects an out-of-range month", async () => {
+      await expect(service.funnelReport(manager, branchId, 2026, 13)).rejects.toThrow(BadRequestException);
+    });
+
+    it("aggregates stage snapshot, conversion, rejection breakdown, and avg days to enroll", async () => {
+      prisma.lead.findMany.mockResolvedValue([
+        { id: "l1", stage: "NEW", createdAt: new Date("2026-08-01"), stageEnteredAt: new Date("2026-08-01"), rejectionReason: null },
+        { id: "l2", stage: "CONTACTED", createdAt: new Date("2026-08-02"), stageEnteredAt: new Date("2026-08-02"), rejectionReason: null },
+        {
+          id: "l3",
+          stage: "ENROLLED",
+          createdAt: new Date("2026-08-01T00:00:00Z"),
+          stageEnteredAt: new Date("2026-08-03T00:00:00Z"),
+          rejectionReason: null,
+        },
+        {
+          id: "l4",
+          stage: "ENROLLED",
+          createdAt: new Date("2026-08-01T00:00:00Z"),
+          stageEnteredAt: new Date("2026-08-05T00:00:00Z"),
+          rejectionReason: null,
+        },
+        {
+          id: "l5",
+          stage: "REJECTED",
+          createdAt: new Date("2026-08-01"),
+          stageEnteredAt: new Date("2026-08-01"),
+          rejectionReason: { name: "Дорого" },
+        },
+      ]);
+
+      const report = await service.funnelReport(manager, branchId, 2026, 8);
+
+      expect(report.totalLeads).toBe(5);
+      expect(report.stages).toEqual(
+        expect.arrayContaining([
+          { stage: "NEW", count: 1 },
+          { stage: "CONTACTED", count: 1 },
+          { stage: "TOUR_SCHEDULED", count: 0 },
+        ]),
+      );
+      expect(report.enrolledCount).toBe(2);
+      expect(report.conversionRate).toBeCloseTo(0.4);
+      expect(report.rejectedCount).toBe(1);
+      expect(report.rejectionRate).toBeCloseTo(0.2);
+      expect(report.rejectionBreakdown).toEqual([{ reasonName: "Дорого", count: 1 }]);
+      expect(report.avgDaysToEnroll).toBeCloseTo(3);
+    });
+
+    it("returns null avgDaysToEnroll and zero rates when no leads exist in the period", async () => {
+      const report = await service.funnelReport(manager, branchId, 2026, 8);
+
+      expect(report.totalLeads).toBe(0);
+      expect(report.conversionRate).toBe(0);
+      expect(report.rejectionRate).toBe(0);
+      expect(report.avgDaysToEnroll).toBeNull();
     });
   });
 });

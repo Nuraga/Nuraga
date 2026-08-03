@@ -82,4 +82,17 @@ export class ReportsController {
     if (!date) throw new BadRequestException("date query param is required");
     return this.reports.portionsToday(user, branchId, date);
   }
+
+  @Get("funnel")
+  funnelReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Query("year") year?: string,
+    @Query("month") month?: string,
+  ) {
+    if (!year || !month) {
+      throw new BadRequestException("year and month query params are required");
+    }
+    return this.reports.funnelReport(user, branchId, Number(year), Number(month));
+  }
 }
