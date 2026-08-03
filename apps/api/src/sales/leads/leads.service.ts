@@ -10,6 +10,7 @@ import { UpdateLeadDto } from "./dto/update-lead.dto";
 import { UpdateLeadStageDto } from "./dto/update-lead-stage.dto";
 import { ConvertLeadDto } from "./dto/convert-lead.dto";
 import { CreateLeadActivityDto } from "./dto/create-lead-activity.dto";
+import { SiteLeadIntakeDto } from "./dto/site-lead-intake.dto";
 
 // ТЗ §2.2 "Лиды" row: Owner ПСРУ, Управляющий(BRANCH_MANAGER) ПСРУ,
 // Менеджер(MANAGER) ПСР — no archive/delete for Manager.
@@ -19,6 +20,16 @@ const LEAD_DELETE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER"];
 
 const TERMINAL_STAGES: readonly LeadStage[] = ["ENROLLED", "REJECTED", "WAITLISTED"];
 const ATTENTION_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+
+// Auto-populated LeadSource for POST /public/leads (ТЗ §3.1 "приём заявок
+// с сайта"). Created lazily on first use rather than seeded, so this
+// module has no bootstrap-order dependency on the dictionaries module.
+const SITE_SOURCE_NAME = "Сайт";
+
+// Who a site-submitted lead is auto-assigned to, most-specific first —
+// there's no "unassigned" queue concept in this schema (responsibleUserId
+// is required), so a real staff member must be picked immediately.
+const SITE_INTAKE_ASSIGNEE_ROLES: Role[] = ["MANAGER", "BRANCH_MANAGER", "OWNER"];
 
 /**
  * Digits-only, with the RU/KZ domestic trunk prefix "8" folded to the "7"
@@ -170,6 +181,71 @@ export class LeadsService {
       actorId: user.id,
     });
     return lead;
+  }
+
+  /**
+   * ТЗ §3.1 "приём заявок с сайта" — the one intentionally unauthenticated
+   * write path in this API (see PublicLeadIntakeController). No `user`,
+   * no branch-role check: source/responsible are auto-resolved, and a
+   * cross-network phone duplicate never blocks submission (an anonymous
+   * visitor can't be shown another family's data to decide on) — it's
+   * only flagged for staff via a LeadActivity note on the new lead.
+   */
+  async siteIntake(dto: SiteLeadIntakeDto, ip?: string): Promise<{ status: "ok" }> {
+    const branch = await this.prisma.branch.findUnique({ where: { id: dto.branchId } });
+    if (!branch) throw new NotFoundException("Unknown branch");
+
+    const [sourceId, responsibleUserId] = await Promise.all([
+      this.getOrCreateSiteSourceId(),
+      this.pickSiteIntakeAssignee(dto.branchId),
+    ]);
+
+    const normalized = normalizePhone(dto.parentPhone);
+
+    const lead = await this.prisma.lead.create({
+      data: {
+        branchId: dto.branchId,
+        parentFullName: dto.parentFullName,
+        parentPhone: dto.parentPhone,
+        parentPhoneNormalized: normalized,
+        parentEmail: dto.parentEmail,
+        childFullName: dto.childFullName,
+        childBirthDate: dto.childBirthDate ? new Date(dto.childBirthDate) : undefined,
+        targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
+        sourceId,
+        responsibleUserId,
+        utmSource: dto.utmSource,
+        utmMedium: dto.utmMedium,
+        utmCampaign: dto.utmCampaign,
+      },
+    });
+
+    await this.audit.record({
+      entity: "lead",
+      entityId: lead.id,
+      action: "create",
+      newValue: { event: "site_intake", ...lead },
+      actorId: null,
+      ip,
+    });
+
+    if (normalized) {
+      const duplicate = await this.prisma.lead.findFirst({
+        where: { parentPhoneNormalized: normalized, id: { not: lead.id } },
+        include: { branch: { select: { name: true } } },
+      });
+      if (duplicate) {
+        await this.prisma.leadActivity.create({
+          data: {
+            leadId: lead.id,
+            authorId: responsibleUserId,
+            content: `Автоматическая пометка: возможный дубль по телефону — уже есть заявка в филиале «${duplicate.branch.name}» (создана ${duplicate.createdAt.toISOString().slice(0, 10)}).`,
+          },
+        });
+      }
+    }
+
+    return { status: "ok" };
   }
 
   async update(user: AuthenticatedUser, branchId: string, id: string, dto: UpdateLeadDto) {
@@ -377,5 +453,28 @@ export class LeadsService {
     if (!group || group.branchId !== branchId) {
       throw new NotFoundException("Group not found in this branch");
     }
+  }
+
+  private async getOrCreateSiteSourceId(): Promise<string> {
+    const existing = await this.prisma.leadSource.findUnique({ where: { name: SITE_SOURCE_NAME } });
+    if (existing) return existing.id;
+
+    try {
+      const created = await this.prisma.leadSource.create({ data: { name: SITE_SOURCE_NAME } });
+      return created.id;
+    } catch {
+      // Lost a create race against a concurrent submission — the unique
+      // constraint on LeadSource.name means it exists now either way.
+      const raced = await this.prisma.leadSource.findUniqueOrThrow({ where: { name: SITE_SOURCE_NAME } });
+      return raced.id;
+    }
+  }
+
+  private async pickSiteIntakeAssignee(branchId: string): Promise<string> {
+    for (const role of SITE_INTAKE_ASSIGNEE_ROLES) {
+      const grant = await this.prisma.userBranchRole.findFirst({ where: { branchId, role } });
+      if (grant) return grant.userId;
+    }
+    throw new BadRequestException("This branch has no staff configured to receive site leads yet");
   }
 }

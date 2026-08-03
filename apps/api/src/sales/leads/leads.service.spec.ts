@@ -67,6 +67,17 @@ describe("LeadsService", () => {
       group: {
         findUnique: jest.fn(() => Promise.resolve({ id: "g1", branchId })),
       },
+      branch: {
+        findUnique: jest.fn(() => Promise.resolve({ id: branchId, name: "Филиал" })),
+      },
+      leadSource: {
+        findUnique: jest.fn(() => Promise.resolve(null)),
+        findUniqueOrThrow: jest.fn(() => Promise.resolve({ id: "src1", name: "Сайт" })),
+        create: jest.fn(() => Promise.resolve({ id: "src1", name: "Сайт" })),
+      },
+      userBranchRole: {
+        findFirst: jest.fn(() => Promise.resolve(null)),
+      },
       $transaction: jest.fn((fn: any) => fn(tx)),
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
@@ -207,6 +218,90 @@ describe("LeadsService", () => {
     it("404s when the lead belongs to a different branch", async () => {
       prisma.lead.findUnique.mockResolvedValue({ ...baseLead, branchId: "other-branch" });
       await expect(service.get(manager, branchId, "lead1")).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe("siteIntake", () => {
+    const dto = {
+      branchId,
+      parentFullName: "Смирнова Ольга",
+      parentPhone: "+7 701 999 88 77",
+      utmSource: "google",
+      utmMedium: "cpc",
+      utmCampaign: "leto2026",
+    };
+
+    it("404s for an unknown branch — no auth/role check to catch this otherwise", async () => {
+      prisma.branch.findUnique.mockResolvedValue(null);
+      await expect(service.siteIntake(dto as any)).rejects.toThrow(NotFoundException);
+    });
+
+    it("creates a LeadSource named «Сайт» on first use and reuses it after", async () => {
+      prisma.userBranchRole.findFirst.mockResolvedValue({ userId: "mgr1" });
+      await service.siteIntake(dto as any);
+      expect(prisma.leadSource.create).toHaveBeenCalledWith({ data: { name: "Сайт" } });
+      expect(prisma.lead.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ sourceId: "src1" }) }),
+      );
+    });
+
+    it("auto-assigns to the branch's MANAGER, preferred over BRANCH_MANAGER/OWNER", async () => {
+      prisma.userBranchRole.findFirst.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.role === "MANAGER" ? { userId: "mgr1" } : null),
+      );
+      await service.siteIntake(dto as any);
+      expect(prisma.lead.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ responsibleUserId: "mgr1" }) }),
+      );
+    });
+
+    it("falls back to BRANCH_MANAGER when no MANAGER exists in the branch", async () => {
+      prisma.userBranchRole.findFirst.mockImplementation(({ where }: any) =>
+        Promise.resolve(where.role === "BRANCH_MANAGER" ? { userId: "bm1" } : null),
+      );
+      await service.siteIntake(dto as any);
+      expect(prisma.lead.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ responsibleUserId: "bm1" }) }),
+      );
+    });
+
+    it("rejects when the branch has no MANAGER/BRANCH_MANAGER/OWNER to assign", async () => {
+      await expect(service.siteIntake(dto as any)).rejects.toThrow(BadRequestException);
+    });
+
+    it("flags a cross-network phone duplicate with a LeadActivity note instead of blocking", async () => {
+      prisma.userBranchRole.findFirst.mockResolvedValue({ userId: "mgr1" });
+      prisma.lead.findFirst.mockResolvedValue({
+        id: "other-lead",
+        createdAt: new Date("2026-01-15"),
+        branch: { name: "Другой филиал" },
+      });
+
+      const result = await service.siteIntake(dto as any);
+
+      expect(result).toEqual({ status: "ok" });
+      expect(prisma.leadActivity.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            authorId: "mgr1",
+            content: expect.stringContaining("Другой филиал"),
+          }),
+        }),
+      );
+    });
+
+    it("captures UTM fields and audits with a null actor (anonymous submission)", async () => {
+      prisma.userBranchRole.findFirst.mockResolvedValue({ userId: "mgr1" });
+      await service.siteIntake(dto as any, "203.0.113.5");
+
+      expect(prisma.lead.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ utmSource: "google", utmMedium: "cpc", utmCampaign: "leto2026" }),
+        }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ actorId: null, ip: "203.0.113.5" }),
+      );
     });
   });
 });

@@ -171,6 +171,11 @@ export default function LeadDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label="Источник">{lead.source?.name ?? "—"}</Descriptions.Item>
           <Descriptions.Item label="Ответственный">{responsible ?? "—"}</Descriptions.Item>
+          {(lead.utmSource || lead.utmMedium || lead.utmCampaign) && (
+            <Descriptions.Item label="UTM-метки" span={2}>
+              {[lead.utmSource, lead.utmMedium, lead.utmCampaign].filter(Boolean).join(" / ")}
+            </Descriptions.Item>
+          )}
           {lead.stage === "REJECTED" && (
             <>
               <Descriptions.Item label="Причина отказа">
