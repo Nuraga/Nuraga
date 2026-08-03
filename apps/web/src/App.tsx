@@ -33,6 +33,7 @@ import DevicesPage from "./staff-attendance/DevicesPage";
 import MenuPage from "./menu/MenuPage";
 import PhotosPage from "./photos/PhotosPage";
 import NetworkAnalyticsPage from "./analytics/NetworkAnalyticsPage";
+import ShiftsPage from "./shifts/ShiftsPage";
 import StaffAttendanceDashboardPage from "./staff-attendance/StaffAttendanceDashboardPage";
 import ParentProtectedRoute from "./parent/ParentProtectedRoute";
 import ParentLayout from "./parent/ParentLayout";
@@ -87,6 +88,7 @@ export default function App() {
                   >
                     <Route path="/" element={<HomePage />} />
                     <Route path="/network-analytics" element={<NetworkAnalyticsPage />} />
+                    <Route path="/shifts" element={<ShiftsPage />} />
                     <Route path="/branches" element={<BranchesPage />} />
                     <Route path="/groups" element={<GroupsPage />} />
                     <Route path="/staff" element={<StaffPage />} />

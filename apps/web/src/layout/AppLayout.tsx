@@ -11,6 +11,7 @@ import {
   BookOutlined,
   CalendarOutlined,
   CheckSquareOutlined,
+  ClockCircleOutlined,
   CoffeeOutlined,
   CreditCardOutlined,
   DollarOutlined,
@@ -53,6 +54,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "/branches", label: "Филиалы", icon: <BankOutlined />, roles: ["OWNER", "SUPERADMIN"] },
   { key: "/groups", label: "Группы", icon: <ApartmentOutlined /> },
   { key: "/staff", label: "Сотрудники", icon: <TeamOutlined /> },
+  { key: "/shifts", label: "График смен", icon: <ClockCircleOutlined /> },
   {
     key: "/leads",
     label: "Лиды",

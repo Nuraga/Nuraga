@@ -109,6 +109,7 @@ model Branch {
   staffAttendanceEvents StaffAttendanceEvent[]
   menuItems             MenuItem[]
   photos                Photo[]
+  shifts                Shift[]
 
   @@map("branch")
 }
@@ -594,6 +595,7 @@ model Staff {
   branch Branch @relation(fields: [branchId], references: [id])
   groups StaffGroup[]
   attendanceEvents StaffAttendanceEvent[]
+  shifts Shift[]
 
   @@map("staff")
 }
@@ -607,6 +609,34 @@ model StaffGroup {
 
   @@id([staffId, groupId])
   @@map("staff_group")
+}
+
+// ---------------------------------------------------------------------------
+// Staff shift schedule (ТЗ §8 M6: "график смен по филиалу в календарном
+// виде, без расчёта зарплаты") — a заведующий-planned schedule of who
+// works when, separate from StaffAttendanceEvent below (which is what
+// actually happened via kiosk QR check-in/out, not what was planned).
+// startTime/endTime are plain "HH:MM" strings, not DateTime — this is a
+// display-only calendar, no payroll/duration math is computed from it.
+// ---------------------------------------------------------------------------
+
+model Shift {
+  id          String   @id @default(uuid())
+  branchId    String
+  staffId     String
+  date        DateTime @db.Date
+  startTime   String
+  endTime     String
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, date])
+  @@map("shift")
 }
 
 // ---------------------------------------------------------------------------

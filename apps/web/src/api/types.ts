@@ -264,6 +264,21 @@ export interface ParentPhoto {
   downloadUrl: string;
 }
 
+// ---------------------------------------------------------------------------
+// Staff shift schedule (ТЗ §8 M6 — Этап 5)
+// ---------------------------------------------------------------------------
+
+export interface Shift {
+  id: string;
+  staffId: string;
+  staffFullName: string;
+  position: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  note: string | null;
+}
+
 export interface WaitlistEntry {
   id: string;
   branchId: string;
