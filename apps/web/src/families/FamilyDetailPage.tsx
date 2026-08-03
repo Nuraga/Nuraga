@@ -573,7 +573,13 @@ export default function FamilyDetailPage() {
         <Form
           form={accountForm}
           layout="vertical"
-          onFinish={(values) => provisionAccount.mutate(values)}
+          onFinish={(values) =>
+            provisionAccount.mutate({
+              ...values,
+              email: values.email || undefined,
+              phone: values.phone || undefined,
+            })
+          }
         >
           <Form.Item
             label="Пароль"
