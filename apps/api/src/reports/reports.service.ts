@@ -38,6 +38,111 @@ function emptyStatusCounts(): Record<AttendanceStatus, number> {
   >;
 }
 
+// Named return shapes — exported so report-tables.ts (the Excel/PDF export
+// column mapping) can depend on them directly instead of `ReturnType<...>`
+// gymnastics.
+export interface OccupancyReport {
+  branchId: string;
+  groups: {
+    groupId: string;
+    groupName: string;
+    isActive: boolean;
+    enrolled: number;
+    plannedCapacity: number;
+    maxCapacity: number;
+    isOverPlanned: boolean;
+    isOverMax: boolean;
+  }[];
+  totals: { enrolled: number; plannedCapacity: number; maxCapacity: number };
+}
+
+export interface AttendanceSummaryReport {
+  branchId: string;
+  groupId: string | null;
+  year: number;
+  month: number;
+  children: ({ childId: string; fullName: string } & Record<AttendanceStatus, number>)[];
+}
+
+export interface WaitlistReport {
+  branchId: string;
+  groups: { groupId: string; groupName: string; waitlisted: number }[];
+  total: number;
+}
+
+export interface DebtRegistry {
+  branchId: string;
+  families: {
+    familyId: string;
+    familyName: string;
+    debtMinor: number;
+    oldestUnpaidPeriod: { year: number; month: number } | null;
+  }[];
+  totalDebtMinor: number;
+}
+
+export interface InvoicesRegistry {
+  branchId: string;
+  year: number;
+  month: number;
+  invoices: { invoiceId: string; familyId: string; familyName: string; status: string; totalMinor: number }[];
+  totalMinor: number;
+}
+
+export interface PaymentsRegistry {
+  branchId: string;
+  year: number;
+  month: number;
+  payments: {
+    paymentId: string;
+    familyId: string;
+    familyName: string;
+    amountMinor: number;
+    method: string;
+    paidAt: Date;
+  }[];
+  totalMinor: number;
+  byMethod: Record<string, number>;
+}
+
+export interface DiscountsRegistry {
+  branchId: string;
+  discounts: {
+    id: string;
+    basis: string;
+    kind: string;
+    value: number;
+    reason: string | null;
+    validFrom: Date;
+    validTo: Date | null;
+    isActive: boolean;
+    familyName: string;
+    childName: string | null;
+  }[];
+  total: number;
+}
+
+export interface PortionsReport {
+  branchId: string;
+  date: string;
+  groups: { groupId: string; groupName: string; portionsNeeded: number }[];
+  total: number;
+}
+
+export interface FunnelReport {
+  branchId: string;
+  year: number;
+  month: number;
+  totalLeads: number;
+  stages: { stage: LeadStage; count: number }[];
+  enrolledCount: number;
+  conversionRate: number;
+  rejectedCount: number;
+  rejectionRate: number;
+  rejectionBreakdown: { reasonName: string; count: number }[];
+  avgDaysToEnroll: number | null;
+}
+
 // Management-level roll-ups over data other modules already own (groups,
 // attendance, waitlist) — read-only, same audience as CHILD_READ_ROLES
 // (Owner/Branch Manager/Manager/Accountant; not a raw Teacher grant).
@@ -49,7 +154,7 @@ export class ReportsService {
     private readonly capacity: GroupCapacityService,
   ) {}
 
-  async occupancy(user: AuthenticatedUser, branchId: string) {
+  async occupancy(user: AuthenticatedUser, branchId: string): Promise<OccupancyReport> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
 
     const groups = await this.prisma.group.findMany({
@@ -82,7 +187,7 @@ export class ReportsService {
     year: number,
     month: number,
     groupId?: string,
-  ) {
+  ): Promise<AttendanceSummaryReport> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new BadRequestException("month must be an integer between 1 and 12");
@@ -131,7 +236,7 @@ export class ReportsService {
     return { branchId, groupId: groupId ?? null, year, month, children: rows };
   }
 
-  async waitlistSummary(user: AuthenticatedUser, branchId: string) {
+  async waitlistSummary(user: AuthenticatedUser, branchId: string): Promise<WaitlistReport> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
 
     const groups = await this.prisma.group.findMany({
@@ -155,7 +260,7 @@ export class ReportsService {
   }
 
   /** Families whose balance (paid − invoiced, ТЗ §11.3 invariant #2) is negative. */
-  async debtRegistry(user: AuthenticatedUser, branchId: string) {
+  async debtRegistry(user: AuthenticatedUser, branchId: string): Promise<DebtRegistry> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
 
     const families = await this.prisma.family.findMany({
@@ -200,7 +305,12 @@ export class ReportsService {
   }
 
   /** Начисления за период (ТЗ §9.2) — all invoices generated for the branch in a given month. */
-  async invoicesRegistry(user: AuthenticatedUser, branchId: string, year: number, month: number) {
+  async invoicesRegistry(
+    user: AuthenticatedUser,
+    branchId: string,
+    year: number,
+    month: number,
+  ): Promise<InvoicesRegistry> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new BadRequestException("month must be an integer between 1 and 12");
@@ -230,7 +340,12 @@ export class ReportsService {
   }
 
   /** Оплаты за период (ТЗ §9.2) — all payments recorded for the branch in a given month. */
-  async paymentsRegistry(user: AuthenticatedUser, branchId: string, year: number, month: number) {
+  async paymentsRegistry(
+    user: AuthenticatedUser,
+    branchId: string,
+    year: number,
+    month: number,
+  ): Promise<PaymentsRegistry> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new BadRequestException("month must be an integer between 1 and 12");
@@ -270,7 +385,11 @@ export class ReportsService {
   }
 
   /** Реестр предоставленных скидок (ТЗ §9.2) — branch-wide, defaults to active discounts only. */
-  async discountsRegistry(user: AuthenticatedUser, branchId: string, activeOnly = true) {
+  async discountsRegistry(
+    user: AuthenticatedUser,
+    branchId: string,
+    activeOnly = true,
+  ): Promise<DiscountsRegistry> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
 
     const discounts = await this.prisma.discount.findMany({
@@ -309,7 +428,7 @@ export class ReportsService {
    * materialized into ABSENT_SICK/ABSENT_EXCUSED/VACATION rows by
    * AbsenceRequestsService.approve) should reduce the count.
    */
-  async portionsToday(user: AuthenticatedUser, branchId: string, date: string) {
+  async portionsToday(user: AuthenticatedUser, branchId: string, date: string): Promise<PortionsReport> {
     this.branchScope.assertRoleInBranch(user, [...CHILD_READ_ROLES], branchId);
     const day = new Date(date.slice(0, 10));
 
@@ -355,7 +474,7 @@ export class ReportsService {
    * that skipped or moved backward through stages can't be reconstructed
    * without parsing AuditLog (out of scope for this pass).
    */
-  async funnelReport(user: AuthenticatedUser, branchId: string, year: number, month: number) {
+  async funnelReport(user: AuthenticatedUser, branchId: string, year: number, month: number): Promise<FunnelReport> {
     this.branchScope.assertRoleInBranch(user, FUNNEL_READ_ROLES, branchId);
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new BadRequestException("month must be an integer between 1 and 12");

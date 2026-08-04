@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DatePicker, Descriptions, Select, Space, Table, Tabs, Typography } from "antd";
+import { App, Button, DatePicker, Descriptions, Select, Space, Table, Tabs, Typography } from "antd";
+import { FileExcelOutlined, FilePdfOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { reportsApi } from "../api/reports";
 import { groupsApi } from "../api/groups";
+import { api, ApiError } from "../api/client";
 import {
   ATTENDANCE_STATUSES,
   DISCOUNT_BASIS_LABELS,
@@ -16,6 +18,45 @@ import { useBranch } from "../layout/BranchContext";
 import { useBranchRoles, hasAnyRole } from "../auth/roles";
 
 const FUNNEL_READ_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER"] as const;
+
+/** ТЗ §9.2: every report needs Excel/PDF export — one small component reused
+ * across all nine tabs rather than duplicating the download plumbing. */
+function ExportButtons({
+  branchId,
+  endpoint,
+  query,
+  filenameBase,
+}: {
+  branchId: string;
+  endpoint: string;
+  query?: Record<string, string | number | boolean | undefined>;
+  filenameBase: string;
+}) {
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState<"xlsx" | "pdf" | null>(null);
+
+  async function handleDownload(format: "xlsx" | "pdf") {
+    setLoading(format);
+    try {
+      await api.download(`/branches/${branchId}/reports/${endpoint}`, { ...query, format }, `${filenameBase}.${format}`);
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Не удалось скачать отчёт");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  return (
+    <Space>
+      <Button size="small" icon={<FileExcelOutlined />} loading={loading === "xlsx"} onClick={() => handleDownload("xlsx")}>
+        Excel
+      </Button>
+      <Button size="small" icon={<FilePdfOutlined />} loading={loading === "pdf"} onClick={() => handleDownload("pdf")}>
+        PDF
+      </Button>
+    </Space>
+  );
+}
 
 const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   DRAFT: "Проект",
@@ -43,6 +84,9 @@ function OccupancyTab({ branchId }: { branchId: string }) {
 
   return (
     <>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "flex-end" }}>
+        <ExportButtons branchId={branchId} endpoint="occupancy" filenameBase="occupancy" />
+      </Space>
       {data && (
         <Typography.Paragraph>
           Всего зачислено: <strong>{data.totals.enrolled}</strong> из плановых{" "}
@@ -83,15 +127,23 @@ function AttendanceSummaryTab({ branchId }: { branchId: string }) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
-        <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
-        <Select
-          placeholder="Все группы"
-          allowClear
-          style={{ width: 200 }}
-          value={groupId}
-          onChange={setGroupId}
-          options={groups.map((g) => ({ value: g.id, label: g.name }))}
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }} wrap>
+        <Space>
+          <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+          <Select
+            placeholder="Все группы"
+            allowClear
+            style={{ width: 200 }}
+            value={groupId}
+            onChange={setGroupId}
+            options={groups.map((g) => ({ value: g.id, label: g.name }))}
+          />
+        </Space>
+        <ExportButtons
+          branchId={branchId}
+          endpoint="attendance-summary"
+          query={{ year: month.year(), month: month.month() + 1, groupId }}
+          filenameBase={`attendance-${month.format("YYYY-MM")}`}
         />
       </Space>
       <Table
@@ -120,6 +172,9 @@ function WaitlistTab({ branchId }: { branchId: string }) {
 
   return (
     <>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "flex-end" }}>
+        <ExportButtons branchId={branchId} endpoint="waitlist" filenameBase="waitlist" />
+      </Space>
       {data && (
         <Typography.Paragraph>
           Всего в очереди: <strong>{data.total}</strong>
@@ -148,6 +203,9 @@ function DebtTab({ branchId }: { branchId: string }) {
 
   return (
     <>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "flex-end" }}>
+        <ExportButtons branchId={branchId} endpoint="debt" filenameBase="debt" />
+      </Space>
       {data && (
         <Typography.Paragraph>
           Общая задолженность: <strong>{formatMinor(data.totalDebtMinor)}</strong>
@@ -182,8 +240,14 @@ function InvoicesTab({ branchId }: { branchId: string }) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }} wrap>
         <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+        <ExportButtons
+          branchId={branchId}
+          endpoint="invoices"
+          query={{ year: month.year(), month: month.month() + 1 }}
+          filenameBase={`invoices-${month.format("YYYY-MM")}`}
+        />
       </Space>
       {data && (
         <Typography.Paragraph>
@@ -215,8 +279,14 @@ function PaymentsTab({ branchId }: { branchId: string }) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }} wrap>
         <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+        <ExportButtons
+          branchId={branchId}
+          endpoint="payments"
+          query={{ year: month.year(), month: month.month() + 1 }}
+          filenameBase={`payments-${month.format("YYYY-MM")}`}
+        />
       </Space>
       {data && (
         <Typography.Paragraph>
@@ -252,6 +322,9 @@ function DiscountsTab({ branchId }: { branchId: string }) {
 
   return (
     <>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "flex-end" }}>
+        <ExportButtons branchId={branchId} endpoint="discounts" filenameBase="discounts" />
+      </Space>
       {data && (
         <Typography.Paragraph>
           Активных скидок: <strong>{data.total}</strong>
@@ -292,8 +365,14 @@ function PortionsTab({ branchId }: { branchId: string }) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }} wrap>
         <DatePicker value={date} onChange={(d) => d && setDate(d)} allowClear={false} />
+        <ExportButtons
+          branchId={branchId}
+          endpoint="portions"
+          query={{ date: date.format("YYYY-MM-DD") }}
+          filenameBase={`portions-${date.format("YYYY-MM-DD")}`}
+        />
       </Space>
       {data && (
         <Typography.Paragraph>
@@ -324,8 +403,14 @@ function FunnelTab({ branchId }: { branchId: string }) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }} wrap>
         <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} allowClear={false} />
+        <ExportButtons
+          branchId={branchId}
+          endpoint="funnel"
+          query={{ year: month.year(), month: month.month() + 1 }}
+          filenameBase={`funnel-${month.format("YYYY-MM")}`}
+        />
       </Space>
       {data && (
         <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>

@@ -133,6 +133,28 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+async function downloadFile(path: string, query: RequestOptions["query"], filename: string): Promise<void> {
+  await ensureFreshAccessToken();
+
+  const headers: Record<string, string> = {};
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+  const res = await fetch(buildUrl(path, query), { headers });
+  if (!res.ok) {
+    throw new ApiError(res.status, await parseErrorMessage(res));
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function upload<T>(
   path: string,
   file: File,
@@ -169,4 +191,5 @@ export const api = {
   anonymousPost: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body, anonymous: true }),
   upload,
+  download: downloadFile,
 };
