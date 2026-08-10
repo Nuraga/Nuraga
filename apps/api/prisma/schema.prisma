@@ -4,6 +4,12 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" = local dev (Windows/mac/glibc-linux). linux-musl-openssl-3.0.x
+  // is required for the Alpine-based Docker image (apps/api/Dockerfile) —
+  // confirmed by testing the built image: without it, PrismaClient fails at
+  // boot with "could not locate the Query Engine for runtime
+  // linux-musl-openssl-3.0.x" even though `prisma generate` itself succeeds.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

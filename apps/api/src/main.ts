@@ -9,7 +9,14 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api");
   app.use(helmet());
-  app.enableCors();
+
+  // CORS_ORIGIN unset (local dev, Vite proxy) => allow any origin, matching
+  // prior behavior. In production set it to the exact web origin(s) so the
+  // API isn't callable cross-origin from arbitrary sites.
+  const corsOrigin = process.env.CORS_ORIGIN;
+  app.enableCors(
+    corsOrigin ? { origin: corsOrigin.split(",").map((o) => o.trim()) } : undefined,
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

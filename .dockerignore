@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.vite
+**/*.tsbuildinfo
+.git
+.claude
+apps/api/storage/local
+apps/api/.env

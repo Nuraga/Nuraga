@@ -1,0 +1,70 @@
+# Production stack: Postgres + api + web(Caddy, terminates TLS + serves static).
+# Redis/MinIO from docker-compose.yml (dev infra) are deliberately NOT here —
+# nothing in apps/api/src actually uses them yet (BullMQ is reserved-not-wired,
+# object storage only has the local-disk adapter — see
+# apps/api/.env.production.example). Add them back if/when that changes.
+#
+# Usage (see DEPLOY.md for the full walkthrough):
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Vars below (POSTGRES_PASSWORD, DOMAIN, ...) come from .env.prod at repo
+# root (compose-level) — copy .env.prod.example. Application secrets
+# (JWT_*, FIELD_ENCRYPTION_KEY, ...) live in apps/api/.env, loaded via
+# env_file below — copy apps/api/.env.production.example.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-detsad}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-detsad_crm}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-detsad}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - apps/api/.env
+    environment:
+      # Overrides whatever DATABASE_URL is in apps/api/.env — the app must
+      # reach Postgres via the compose service name, not localhost/an
+      # external host.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-detsad}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-detsad_crm}?schema=public
+      CORS_ORIGIN: https://${DOMAIN:?set DOMAIN in .env.prod}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - api_storage:/repo/apps/api/storage/local
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.prod}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  api_storage:
+  caddy_data:
+  caddy_config:

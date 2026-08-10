@@ -1,0 +1,26 @@
+# {$DOMAIN} and {$ACME_EMAIL} come from the "web" service's environment in
+# docker-compose.prod.yml. Caddy issues/renews the Let's Encrypt cert
+# automatically the first time it can complete the HTTP-01 challenge, which
+# means DNS for the domain must already point at this server's IP.
+{$DOMAIN} {
+	encode gzip
+
+	# `handle` blocks are evaluated in order, first match wins — needed
+	# because Caddy's global directive order runs try_files (below) BEFORE
+	# reverse_proxy, so without this the SPA fallback rewrites /api/* to
+	# /index.html before the proxy matcher ever sees it (confirmed by
+	# testing: a flat "@api path /api/*; reverse_proxy ..." at top level
+	# silently served index.html for /api/* instead of proxying).
+	#
+	# NestJS is mounted with a global "/api" prefix (see apps/api/src/main.ts),
+	# so the prefix must be forwarded as-is — do NOT use handle_path here.
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}
