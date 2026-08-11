@@ -104,8 +104,34 @@ docker compose -f docker-compose.prod.yml exec api pnpm exec ts-node prisma/seed
 (`ChangeMe123!` по умолчанию в коде сида) — **сменить сразу после первого
 входа**, система на публичном IP.
 
-## 7. Дальше вручную (не автоматизировано)
+## 7. Бэкапы (автоматизировано)
 
-- **Бэкапы Postgres**: `docker compose -f docker-compose.prod.yml exec postgres pg_dump -U detsad detsad_crm > backup.sql`, повесить на cron. То же для volume `api_storage` (загруженные файлы).
+`scripts/backup.sh` делает ежедневно: `pg_dump` (gzip) + tar-архив volume
+`api_storage` (загруженные файлы), оба кладутся в `backups/` в корне
+репо на сервере, хранятся 14 дней (более старые удаляются). Volume
+Postgres (`postgres_data`) отдельно не бэкапится — он восстанавливается
+из дампа.
+
+Разово на сервере (уже сделано на текущем демо-инстансе, `crontab -l`
+покажет строку ниже):
+
+```bash
+chmod +x /opt/detsad-crm/scripts/backup.sh
+( crontab -l 2>/dev/null; echo "0 3 * * * /opt/detsad-crm/scripts/backup.sh >> /var/log/detsad-backup.log 2>&1" ) | crontab -
+```
+
+Восстановление из дампа:
+
+```bash
+gunzip -c backups/db-ДАТА.sql.gz | docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T postgres psql -U detsad detsad_crm
+```
+
+**Не покрыто**: бэкапы лежат на том же диске VPS — при отказе диска
+теряются вместе с продом. Для реального продакшна (не демо) нужен
+offsite-копия (S3/другой сервер), это отдельная задача, не блокер
+текущего демо.
+
+## 8. Дальше вручную (не автоматизировано)
+
 - **2FA**: включить для OWNER/ACCOUNTANT/SUPERADMIN аккаунтов после первого логина — поддерживается системой, но не принуждается.
 - **Обновление деплоя**: `git pull && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`.
