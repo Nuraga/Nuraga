@@ -115,6 +115,32 @@ export class AuthService {
     await this.tokens.revokeRefreshToken(refreshToken);
   }
 
+  /**
+   * Self-service password change — requires the current password (no
+   * "forgot password" email flow exists yet, see DEPLOY.md). Revokes every
+   * other session so a leaked old password stops working immediately.
+   */
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    const oldPasswordOk = await this.password.verify(user.passwordHash, oldPassword);
+    if (!oldPasswordOk) {
+      throw new UnauthorizedException("Текущий пароль указан неверно");
+    }
+
+    const passwordHash = await this.password.hash(newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.tokens.revokeAllForUser(userId);
+
+    await this.audit.record({
+      entity: "user",
+      entityId: userId,
+      action: "update",
+      newValue: { event: "password_changed" },
+      actorId: userId,
+    });
+  }
+
   async setup2fa(userId: string): Promise<{ otpauthUrl: string; qrCodeDataUrl: string }> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const secret = this.totp.generateSecret();

@@ -22,4 +22,6 @@ export const authApi = {
   logout: (refreshToken: string) => api.anonymousPost<{ ok: true }>("/auth/logout", { refreshToken }),
   setup2fa: () => api.post<TwoFactorSetup>("/auth/2fa/setup"),
   enable2fa: (code: string) => api.post<{ ok: true }>("/auth/2fa/enable", { code }),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    api.post<{ ok: true }>("/auth/change-password", { oldPassword, newPassword }),
 };

@@ -146,6 +146,14 @@ export class TokenService {
     });
   }
 
+  /** Revokes every active refresh token for a user — used after a password change so other sessions can't outlive it. */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   private hashRefreshToken(plain: string): string {
     return createHash("sha256").update(plain).digest("hex");
   }

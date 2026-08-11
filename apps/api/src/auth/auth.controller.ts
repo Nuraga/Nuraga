@@ -5,6 +5,7 @@ import { LoginDto } from "./dto/login.dto";
 import { Verify2faDto } from "./dto/verify-2fa.dto";
 import { Enable2faDto } from "./dto/enable-2fa.dto";
 import { RefreshDto } from "./dto/refresh.dto";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { CurrentUser } from "../common/access/current-user.decorator";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
@@ -38,6 +39,13 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() user: AuthenticatedUser) {
     return user;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("change-password")
+  async changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
+    await this.auth.changePassword(user.id, dto.oldPassword, dto.newPassword);
+    return { ok: true };
   }
 
   @UseGuards(JwtAuthGuard)

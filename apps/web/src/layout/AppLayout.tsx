@@ -172,6 +172,8 @@ export default function AppLayout() {
     NAV_ITEMS.find((item) => item.key !== "/" && location.pathname.startsWith(item.key))?.key ?? "/";
 
   const userMenuItems: MenuProps["items"] = [
+    { key: "/profile", icon: <UserOutlined />, label: "Профиль" },
+    { type: "divider" },
     { key: "logout", icon: <LogoutOutlined />, label: "Выйти" },
   ];
 
@@ -233,6 +235,7 @@ export default function AppLayout() {
               items: userMenuItems,
               onClick: ({ key }) => {
                 if (key === "logout") void logout();
+                else navigate(key);
               },
             }}
           >

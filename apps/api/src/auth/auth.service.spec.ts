@@ -33,7 +33,12 @@ function makeUser(overrides: Partial<MockUser> = {}): MockUser {
 describe("AuthService.login", () => {
   let prisma: { user: Record<string, jest.Mock> };
   let password: { verify: jest.Mock; hash: jest.Mock };
-  let tokens: { signAccessToken: jest.Mock; issueRefreshToken: jest.Mock; signMfaToken: jest.Mock };
+  let tokens: {
+    signAccessToken: jest.Mock;
+    issueRefreshToken: jest.Mock;
+    signMfaToken: jest.Mock;
+    revokeAllForUser: jest.Mock;
+  };
   let audit: { record: jest.Mock };
   let service: AuthService;
   let currentUser: MockUser;
@@ -44,6 +49,7 @@ describe("AuthService.login", () => {
     prisma = {
       user: {
         findFirst: jest.fn(() => Promise.resolve(currentUser)),
+        findUniqueOrThrow: jest.fn(() => Promise.resolve(currentUser)),
         update: jest.fn((args: any) => {
           Object.assign(currentUser, args.data);
           return Promise.resolve(currentUser);
@@ -55,6 +61,7 @@ describe("AuthService.login", () => {
       signAccessToken: jest.fn(() => Promise.resolve("access-token")),
       issueRefreshToken: jest.fn(() => Promise.resolve("refresh-token")),
       signMfaToken: jest.fn(() => Promise.resolve("mfa-token")),
+      revokeAllForUser: jest.fn(() => Promise.resolve()),
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
 
@@ -132,5 +139,61 @@ describe("AuthService.login", () => {
     const result = await service.login("owner@example.com", "correct");
 
     expect(result).toMatchObject({ status: "ok", totpSetupRequired: true });
+  });
+});
+
+describe("AuthService.changePassword", () => {
+  let prisma: { user: Record<string, jest.Mock> };
+  let password: { verify: jest.Mock; hash: jest.Mock };
+  let tokens: { revokeAllForUser: jest.Mock };
+  let audit: { record: jest.Mock };
+  let service: AuthService;
+  let currentUser: MockUser;
+
+  beforeEach(() => {
+    currentUser = makeUser();
+
+    prisma = {
+      user: {
+        findUniqueOrThrow: jest.fn(() => Promise.resolve(currentUser)),
+        update: jest.fn((args: any) => {
+          Object.assign(currentUser, args.data);
+          return Promise.resolve(currentUser);
+        }),
+      },
+    };
+    password = { verify: jest.fn(), hash: jest.fn(() => Promise.resolve("new-hash")) };
+    tokens = { revokeAllForUser: jest.fn(() => Promise.resolve()) };
+    audit = { record: jest.fn(() => Promise.resolve()) };
+
+    service = new AuthService(
+      prisma as any,
+      password as any,
+      tokens as any,
+      {} as any,
+      audit as any,
+    );
+  });
+
+  it("rejects with the wrong current password and leaves the hash untouched", async () => {
+    password.verify.mockResolvedValue(false);
+
+    await expect(service.changePassword("user-1", "wrong", "newpassword")).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(tokens.revokeAllForUser).not.toHaveBeenCalled();
+  });
+
+  it("hashes the new password, saves it, and revokes every other session", async () => {
+    password.verify.mockResolvedValue(true);
+
+    await service.changePassword("user-1", "correct", "newpassword");
+
+    expect(currentUser.passwordHash).toBe("new-hash");
+    expect(tokens.revokeAllForUser).toHaveBeenCalledWith("user-1");
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ newValue: { event: "password_changed" } }),
+    );
   });
 });

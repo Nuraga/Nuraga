@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import LoginPage from "./auth/LoginPage";
 import TwoFactorSetupPage from "./auth/TwoFactorSetupPage";
+import ProfilePage from "./auth/ProfilePage";
 import { BranchProvider } from "./layout/BranchContext";
 import ProtectedRoute from "./layout/ProtectedRoute";
 import AppLayout from "./layout/AppLayout";
@@ -113,6 +114,7 @@ export default function App() {
                     <Route path="/staff-attendance" element={<StaffAttendanceDashboardPage />} />
                     <Route path="/menu" element={<MenuPage />} />
                     <Route path="/photos" element={<PhotosPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
                   </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
