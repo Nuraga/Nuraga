@@ -1,0 +1,6 @@
+# Force LF regardless of core.autocrlf — matters for git archive, which
+# is how scripts/*.sh ship to the Linux VPS (see DEPLOY.md). Without this,
+# Windows' core.autocrlf=true silently re-CRLFs shell scripts on archive
+# even though the blob itself is stored as LF, breaking the "#!/bin/sh"
+# shebang on the server (`bad interpreter`).
+*.sh text eol=lf
