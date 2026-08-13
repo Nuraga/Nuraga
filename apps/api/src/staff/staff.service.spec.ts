@@ -43,13 +43,19 @@ describe("StaffService", () => {
       staff: {
         create: jest.fn((args: any) => Promise.resolve({ id: "s1", ...args.data })),
         findMany: jest.fn(() => Promise.resolve([])),
-        findUnique: jest.fn(() => Promise.resolve({ id: "s1", branchId })),
+        findUnique: jest.fn(() => Promise.resolve({ id: "s1", branchId, userId: "u-staff", terminatedAt: null })),
+        update: jest.fn((args: any) => Promise.resolve({ id: "s1", ...args.data })),
       },
       staffGroup: {
         upsert: jest.fn(() => Promise.resolve({})),
         deleteMany: jest.fn(() => Promise.resolve({})),
       },
-      $transaction: jest.fn((fn: any) => fn(tx)),
+      userBranchRole: {
+        deleteMany: jest.fn(() => Promise.resolve({ count: 1 })),
+      },
+      $transaction: jest.fn((arg: any) =>
+        Array.isArray(arg) ? Promise.all(arg) : arg(tx),
+      ),
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
     password = { hash: jest.fn(() => Promise.resolve("hashed")) };
@@ -147,6 +153,49 @@ describe("StaffService", () => {
         expect.objectContaining({ create: { staffId: "s1", groupId: "g1" } }),
       );
       expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ entity: "staff_group" }));
+    });
+  });
+
+  describe("terminate", () => {
+    it("rejects a role without staff management rights", async () => {
+      await expect(service.terminate(teacher, branchId, "s1", {})).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it("404s when the staff member belongs to a different branch", async () => {
+      prisma.staff.findUnique.mockResolvedValue({ id: "s1", branchId: "other-branch" });
+      await expect(service.terminate(owner, branchId, "s1", {})).rejects.toThrow(NotFoundException);
+    });
+
+    it("rejects a staff member who is already terminated", async () => {
+      prisma.staff.findUnique.mockResolvedValue({
+        id: "s1",
+        branchId,
+        userId: "u-staff",
+        terminatedAt: new Date(),
+      });
+      await expect(service.terminate(owner, branchId, "s1", {})).rejects.toThrow(ConflictException);
+    });
+
+    it("sets terminatedAt, revokes this branch's role grants, and records an audit entry", async () => {
+      await service.terminate(owner, branchId, "s1", { reason: "По собственному желанию" });
+
+      expect(prisma.staff.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "s1" },
+          data: expect.objectContaining({ terminatedAt: expect.any(Date) }),
+        }),
+      );
+      expect(prisma.userBranchRole.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "u-staff", branchId },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entity: "staff",
+          newValue: { event: "terminated", reason: "По собственному желанию" },
+        }),
+      );
     });
   });
 });

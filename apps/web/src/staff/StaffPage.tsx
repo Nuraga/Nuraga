@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { staffApi, STAFF_GRANTABLE_ROLES } from "../api/staff";
 import { groupsApi } from "../api/groups";
@@ -22,9 +22,10 @@ export default function StaffPage() {
   const { selectedBranchId } = useBranch();
   const branchId = selectedBranchId!;
 
+  const [includeTerminated, setIncludeTerminated] = useState(false);
   const { data: staff = [], isLoading } = useQuery({
-    queryKey: ["staff", branchId],
-    queryFn: () => staffApi.list(branchId),
+    queryKey: ["staff", branchId, includeTerminated],
+    queryFn: () => staffApi.list(branchId, includeTerminated),
     enabled: Boolean(branchId),
   });
   const { data: groups = [] } = useQuery({
@@ -68,19 +69,32 @@ export default function StaffPage() {
     onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
   });
 
+  const terminateMutation = useMutation({
+    mutationFn: (staffId: string) => staffApi.terminate(branchId, staffId),
+    onSuccess: () => {
+      invalidate();
+      message.success("Сотрудник уволен");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
   function groupName(groupId: string) {
     return groups.find((g) => g.id === groupId)?.name ?? groupId;
   }
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }} wrap>
         <Typography.Title level={3} style={{ margin: 0 }}>
           Сотрудники
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          Добавить сотрудника
-        </Button>
+        <Space>
+          <Switch checked={includeTerminated} onChange={setIncludeTerminated} />
+          <Typography.Text>Показывать уволенных</Typography.Text>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            Добавить сотрудника
+          </Button>
+        </Space>
       </Space>
 
       <Table
@@ -91,6 +105,16 @@ export default function StaffPage() {
           { title: "ФИО", dataIndex: ["user", "fullName"] },
           { title: "Email", dataIndex: ["user", "email"] },
           { title: "Должность", dataIndex: "position" },
+          {
+            title: "Статус",
+            key: "status",
+            render: (_, record: Staff) =>
+              record.terminatedAt ? (
+                <Tag color="red">Уволен {new Date(record.terminatedAt).toLocaleDateString("ru-RU")}</Tag>
+              ) : (
+                <Tag color="green">Работает</Tag>
+              ),
+          },
           {
             title: "Группы",
             key: "groups",
@@ -114,11 +138,23 @@ export default function StaffPage() {
           {
             title: "",
             key: "actions",
-            render: (_, record: Staff) => (
-              <Button size="small" onClick={() => setAssignFor(record)}>
-                Назначить группу
-              </Button>
-            ),
+            render: (_, record: Staff) =>
+              !record.terminatedAt && (
+                <Space>
+                  <Button size="small" onClick={() => setAssignFor(record)}>
+                    Назначить группу
+                  </Button>
+                  <Popconfirm
+                    title="Уволить сотрудника?"
+                    description="Доступ к филиалу будет отозван. История посещаемости и смен сохранится."
+                    onConfirm={() => terminateMutation.mutate(record.id)}
+                  >
+                    <Button size="small" danger loading={terminateMutation.isPending}>
+                      Уволить
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ),
           },
         ]}
       />

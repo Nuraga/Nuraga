@@ -14,9 +14,12 @@ export interface CreateStaffInput {
 }
 
 export const staffApi = {
-  list: (branchId: string) => api.get<Staff[]>(`/branches/${branchId}/staff`),
+  list: (branchId: string, includeTerminated = false) =>
+    api.get<Staff[]>(`/branches/${branchId}/staff${includeTerminated ? "?includeTerminated=true" : ""}`),
   create: (branchId: string, dto: CreateStaffInput) =>
     api.post<Staff>(`/branches/${branchId}/staff`, dto),
+  terminate: (branchId: string, staffId: string, reason?: string) =>
+    api.delete<Staff>(`/branches/${branchId}/staff/${staffId}`, reason ? { reason } : undefined),
   assignGroup: (branchId: string, staffId: string, groupId: string) =>
     api.post<void>(`/branches/${branchId}/staff/${staffId}/groups/${groupId}`),
   unassignGroup: (branchId: string, staffId: string, groupId: string) =>

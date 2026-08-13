@@ -590,12 +590,17 @@ model TimesheetCorrection {
 // ---------------------------------------------------------------------------
 
 model Staff {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  branchId  String
-  position  String
-  hiredAt   DateTime?
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  branchId     String
+  position     String
+  hiredAt      DateTime?
+  // Soft-delete marker: null = currently employed. Set by StaffService.terminate
+  // (dismissal) instead of a hard delete, so attendance/shift/audit history
+  // stays intact — same reasoning as the isActive flag on dictionary rows,
+  // just named for what this row actually represents (an employment span).
+  terminatedAt DateTime?
+  createdAt    DateTime  @default(now())
 
   user   User   @relation(fields: [userId], references: [id])
   branch Branch @relation(fields: [branchId], references: [id])

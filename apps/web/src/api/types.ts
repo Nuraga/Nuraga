@@ -69,6 +69,7 @@ export interface Staff {
   branchId: string;
   position: string;
   hiredAt: string | null;
+  terminatedAt: string | null;
   createdAt: string;
   groups?: { staffId: string; groupId: string }[];
   user?: { id: string; fullName: string; email: string | null };

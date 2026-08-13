@@ -5,6 +5,7 @@ import { AuditService } from "../common/audit/audit.service";
 import { PasswordService } from "../auth/password.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import { CreateStaffDto } from "./dto/create-staff.dto";
+import { TerminateStaffDto } from "./dto/terminate-staff.dto";
 
 const STAFF_MANAGER_ROLES = ["OWNER", "BRANCH_MANAGER"] as const;
 
@@ -100,12 +101,46 @@ export class StaffService {
     });
   }
 
-  async findAllForBranch(user: AuthenticatedUser, branchId: string) {
+  async findAllForBranch(user: AuthenticatedUser, branchId: string, includeTerminated = false) {
     this.branchScope.assertBranchAccess(user, branchId);
     return this.prisma.staff.findMany({
-      where: { branchId },
+      where: { branchId, ...(includeTerminated ? {} : { terminatedAt: null }) },
       include: { groups: true, user: { select: { id: true, fullName: true, email: true } } },
     });
+  }
+
+  /**
+   * Dismissal — a soft delete (terminatedAt), never a hard delete, so
+   * attendance/shift/audit history referencing this Staff row stays intact.
+   * Also revokes this branch's role grant(s) so the account immediately
+   * loses CRM access here; the User row itself (and any grants on other
+   * branches, or a parent profile) is left untouched.
+   */
+  async terminate(user: AuthenticatedUser, branchId: string, staffId: string, dto: TerminateStaffDto) {
+    this.branchScope.assertRoleInBranch(user, [...STAFF_MANAGER_ROLES], branchId);
+
+    const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+    if (!staff || staff.branchId !== branchId) {
+      throw new NotFoundException("Staff member not found in this branch");
+    }
+    if (staff.terminatedAt) {
+      throw new ConflictException("This staff member is already terminated");
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.staff.update({ where: { id: staffId }, data: { terminatedAt: new Date() } }),
+      this.prisma.userBranchRole.deleteMany({ where: { userId: staff.userId, branchId } }),
+    ]);
+
+    await this.audit.record({
+      entity: "staff",
+      entityId: staffId,
+      action: "update",
+      newValue: { event: "terminated", reason: dto.reason ?? null },
+      actorId: user.id,
+    });
+
+    return updated;
   }
 
   async assignGroup(user: AuthenticatedUser, branchId: string, staffId: string, groupId: string) {
