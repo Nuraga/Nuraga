@@ -1,4 +1,4 @@
-import { IsDateString, IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength } from "class-validator";
+import { IsDateString, IsEmail, IsIn, IsOptional, IsString, IsUUID, MinLength, ValidateIf } from "class-validator";
 import type { Role } from "@prisma/client";
 
 // Exactly one of the two shapes must be given: userId links an existing
@@ -16,7 +16,12 @@ export class CreateStaffDto {
   @MinLength(1)
   fullName?: string;
 
-  @IsOptional()
+  // class-validator's @IsOptional() only exempts null/undefined, not "" —
+  // and the frontend form sends "" for an untouched/cleared field. Without
+  // @ValidateIf, an empty email fails @IsEmail() with a confusing "email
+  // must be an email" even though the whole point is email is optional
+  // (email-or-phone is enforced separately, see StaffService).
+  @ValidateIf((o: CreateStaffDto) => o.email !== undefined && o.email !== "")
   @IsEmail()
   email?: string;
 
