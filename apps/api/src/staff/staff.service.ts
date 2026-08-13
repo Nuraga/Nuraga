@@ -60,16 +60,26 @@ export class StaffService {
         "fullName, password, and role are required when userId is not provided",
       );
     }
-    if (!dto.email && !dto.phone) {
+
+    // Normalize "" to undefined — email/phone are @unique in schema.prisma,
+    // and Postgres treats "" as a real (colliding) value, unlike NULL
+    // (multiple NULLs are allowed under a unique constraint). Storing a
+    // literal "" here would make every subsequent blank-email/-phone signup
+    // fail with a unique-constraint error against the first one, which is
+    // exactly what happened before this fix.
+    const email = dto.email || undefined;
+    const phone = dto.phone || undefined;
+
+    if (!email && !phone) {
       throw new BadRequestException("email or phone is required to create a new account");
     }
 
-    if (dto.email) {
-      const emailTaken = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (email) {
+      const emailTaken = await this.prisma.user.findUnique({ where: { email } });
       if (emailTaken) throw new ConflictException("A user with this email already exists");
     }
-    if (dto.phone) {
-      const phoneTaken = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    if (phone) {
+      const phoneTaken = await this.prisma.user.findUnique({ where: { phone } });
       if (phoneTaken) throw new ConflictException("A user with this phone already exists");
     }
 
@@ -79,8 +89,8 @@ export class StaffService {
       const newUser = await tx.user.create({
         data: {
           fullName: dto.fullName!,
-          email: dto.email,
-          phone: dto.phone,
+          email,
+          phone,
           passwordHash,
         },
       });

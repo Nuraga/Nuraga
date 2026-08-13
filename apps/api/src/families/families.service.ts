@@ -171,8 +171,11 @@ export class FamiliesService {
       throw new ConflictException("This parent already has an account");
     }
 
-    const email = dto.email ?? parent.email ?? undefined;
-    const phone = dto.phone ?? parent.phone ?? undefined;
+    // `||` (not `??`) deliberately — an explicit "" from an untouched form
+    // field must also fall through to the parent's contact info, same
+    // reasoning as the email/phone normalization in StaffService.
+    const email = dto.email || parent.email || undefined;
+    const phone = dto.phone || parent.phone || undefined;
     if (!email && !phone) {
       throw new BadRequestException(
         "email or phone is required — provide one or add it to the parent's contact info first",

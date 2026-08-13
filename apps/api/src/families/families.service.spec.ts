@@ -166,5 +166,24 @@ describe("FamiliesService", () => {
         expect.objectContaining({ data: expect.objectContaining({ phone: "+77011112233" }) }),
       );
     });
+
+    it("treats an empty-string dto.email like an absent one, falling back to the parent's phone (regression: unique-constraint collision between blank-email accounts)", async () => {
+      prisma.parent.findUnique.mockResolvedValue({
+        id: "p1",
+        familyId: "f1",
+        fullName: "Иван Иванов",
+        userId: null,
+        email: null,
+        phone: "+77011112233",
+      });
+      await service.provisionParentAccount(manager, branchId, "f1", "p1", {
+        password: "correcthorse",
+        email: "",
+      });
+
+      expect(tx.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ email: undefined, phone: "+77011112233" }) }),
+      );
+    });
   });
 });

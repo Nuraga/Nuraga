@@ -111,6 +111,24 @@ describe("StaffService", () => {
         );
       });
 
+      it("rejects an empty-string email with a filled phone treated as no email", async () => {
+        const blankEmail = { ...newUserDto, email: "", phone: undefined };
+        await expect(service.create(owner, branchId, blankEmail as any)).rejects.toThrow(
+          BadRequestException,
+        );
+      });
+
+      it("normalizes an empty-string email to undefined instead of storing \"\" (regression: unique-constraint collision between blank-email accounts)", async () => {
+        await service.create(owner, branchId, { ...newUserDto, email: "", phone: "+77001112233" } as any);
+
+        expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
+          expect.objectContaining({ where: { email: "" } }),
+        );
+        expect(tx.user.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ email: undefined }) }),
+        );
+      });
+
       it("rejects a duplicate email", async () => {
         prisma.user.findUnique.mockResolvedValue({ id: "someone-else" });
         await expect(service.create(owner, branchId, newUserDto as any)).rejects.toThrow(
