@@ -53,6 +53,11 @@ describe("StaffService", () => {
       userBranchRole: {
         deleteMany: jest.fn(() => Promise.resolve({ count: 1 })),
       },
+      staffVacation: {
+        create: jest.fn((args: any) => Promise.resolve({ id: "v1", ...args.data })),
+        findUnique: jest.fn(() => Promise.resolve({ id: "v1", staffId: "s1", branchId })),
+        delete: jest.fn(() => Promise.resolve({})),
+      },
       $transaction: jest.fn((arg: any) =>
         Array.isArray(arg) ? Promise.all(arg) : arg(tx),
       ),
@@ -213,6 +218,70 @@ describe("StaffService", () => {
           entity: "staff",
           newValue: { event: "terminated", reason: "По собственному желанию" },
         }),
+      );
+    });
+  });
+
+  describe("updateSchedule", () => {
+    it("rejects a role without staff management rights", async () => {
+      await expect(
+        service.updateSchedule(teacher, branchId, "s1", { checkInTime: "07:30" }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("sets an individual expected check-in/check-out time", async () => {
+      await service.updateSchedule(owner, branchId, "s1", { checkInTime: "07:30", checkOutTime: "17:00" });
+
+      expect(prisma.staff.update).toHaveBeenCalledWith({
+        where: { id: "s1" },
+        data: { expectedCheckInTime: "07:30", expectedCheckOutTime: "17:00" },
+      });
+    });
+
+    it("resets to the network default when a field is omitted", async () => {
+      await service.updateSchedule(owner, branchId, "s1", {});
+
+      expect(prisma.staff.update).toHaveBeenCalledWith({
+        where: { id: "s1" },
+        data: { expectedCheckInTime: null, expectedCheckOutTime: null },
+      });
+    });
+  });
+
+  describe("addVacation / removeVacation", () => {
+    it("rejects a role without staff management rights", async () => {
+      await expect(
+        service.addVacation(teacher, branchId, "s1", { startDate: "2026-09-01", endDate: "2026-09-14" }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("rejects an endDate before startDate", async () => {
+      await expect(
+        service.addVacation(owner, branchId, "s1", { startDate: "2026-09-14", endDate: "2026-09-01" }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("creates a vacation range and records an audit entry", async () => {
+      const vacation = await service.addVacation(owner, branchId, "s1", {
+        startDate: "2026-09-01",
+        endDate: "2026-09-14",
+      });
+
+      expect(vacation).toMatchObject({ staffId: "s1", branchId, createdById: "u1" });
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ entity: "staff_vacation" }));
+    });
+
+    it("404s removeVacation when the vacation doesn't belong to this staff member", async () => {
+      prisma.staffVacation.findUnique.mockResolvedValue({ id: "v1", staffId: "other-staff", branchId });
+      await expect(service.removeVacation(owner, branchId, "s1", "v1")).rejects.toThrow(NotFoundException);
+    });
+
+    it("removes a vacation and records an audit entry", async () => {
+      await service.removeVacation(owner, branchId, "s1", "v1");
+
+      expect(prisma.staffVacation.delete).toHaveBeenCalledWith({ where: { id: "v1" } });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ entity: "staff_vacation", action: "delete" }),
       );
     });
   });

@@ -58,6 +58,7 @@ model User {
   refreshTokens     RefreshToken[]
   auditLogEntries   AuditLog[]
   uploadedPhotos    Photo[]
+  notifications     Notification[]
 
   @@map("user")
 }
@@ -123,6 +124,7 @@ model Branch {
   menuItems             MenuItem[]
   photos                Photo[]
   shifts                Shift[]
+  staffVacations        StaffVacation[]
 
   @@map("branch")
 }
@@ -607,6 +609,11 @@ model Staff {
   // stays intact — same reasoning as the isActive flag on dictionary rows,
   // just named for what this row actually represents (an employment span).
   terminatedAt DateTime?
+  // "HH:MM" 24h, individually set by OWNER/BRANCH_MANAGER (StaffService.updateSchedule).
+  // null = use the network-wide default (see DEFAULT_CHECK_IN_TIME/
+  // DEFAULT_CHECK_OUT_TIME in staff-attendance.service.ts).
+  expectedCheckInTime  String?
+  expectedCheckOutTime String?
   createdAt    DateTime  @default(now())
 
   user   User   @relation(fields: [userId], references: [id])
@@ -614,6 +621,7 @@ model Staff {
   groups StaffGroup[]
   attendanceEvents StaffAttendanceEvent[]
   shifts Shift[]
+  vacations StaffVacation[]
 
   @@map("staff")
 }
@@ -718,6 +726,26 @@ model StaffAttendanceEvent {
   @@map("staff_attendance_event")
 }
 
+// Manager-declared vacation window (StaffService.addVacation/removeVacation,
+// OWNER/BRANCH_MANAGER only). While "today" falls within one, the staff
+// member shows "В отпуске" instead of a kiosk-attendance status.
+model StaffVacation {
+  id          String   @id @default(uuid())
+  staffId     String
+  branchId    String
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@map("staff_vacation")
+}
+
 // ---------------------------------------------------------------------------
 // Audit log — append-only, never updated/deleted from the app layer.
 // ---------------------------------------------------------------------------
@@ -738,6 +766,26 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+enum NotificationType {
+  STAFF_LATE_CHECK_IN
+}
+
+// In-app only (bell icon in AppLayout) — no email/SMS/push infra in this
+// project (see DEPLOY.md). Read/unread is per-recipient User.
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  message   String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notification")
 }
 
 // ---------------------------------------------------------------------------

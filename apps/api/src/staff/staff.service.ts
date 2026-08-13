@@ -6,6 +6,8 @@ import { PasswordService } from "../auth/password.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import { CreateStaffDto } from "./dto/create-staff.dto";
 import { TerminateStaffDto } from "./dto/terminate-staff.dto";
+import { UpdateStaffScheduleDto } from "./dto/update-staff-schedule.dto";
+import { CreateVacationDto } from "./dto/create-vacation.dto";
 
 const STAFF_MANAGER_ROLES = ["OWNER", "BRANCH_MANAGER"] as const;
 
@@ -115,7 +117,91 @@ export class StaffService {
     this.branchScope.assertBranchAccess(user, branchId);
     return this.prisma.staff.findMany({
       where: { branchId, ...(includeTerminated ? {} : { terminatedAt: null }) },
-      include: { groups: true, user: { select: { id: true, fullName: true, email: true } } },
+      include: {
+        groups: true,
+        user: { select: { id: true, fullName: true, email: true } },
+        // Small per-staff list (a handful of ranges at most) — the frontend
+        // derives the "В отпуске" badge by checking whether today falls in
+        // any of them, same as it already derives "Работает"/"Уволен".
+        vacations: { orderBy: { startDate: "desc" } },
+      },
+    });
+  }
+
+  /** OWNER/BRANCH_MANAGER set an individual expected arrival/departure time; null resets to the network default. */
+  async updateSchedule(
+    user: AuthenticatedUser,
+    branchId: string,
+    staffId: string,
+    dto: UpdateStaffScheduleDto,
+  ) {
+    this.branchScope.assertRoleInBranch(user, [...STAFF_MANAGER_ROLES], branchId);
+    await this.assertStaffInBranch(branchId, staffId);
+
+    const updated = await this.prisma.staff.update({
+      where: { id: staffId },
+      data: {
+        expectedCheckInTime: dto.checkInTime ?? null,
+        expectedCheckOutTime: dto.checkOutTime ?? null,
+      },
+    });
+
+    await this.audit.record({
+      entity: "staff",
+      entityId: staffId,
+      action: "update",
+      newValue: { event: "schedule_updated", checkInTime: dto.checkInTime, checkOutTime: dto.checkOutTime },
+      actorId: user.id,
+    });
+
+    return updated;
+  }
+
+  async addVacation(user: AuthenticatedUser, branchId: string, staffId: string, dto: CreateVacationDto) {
+    this.branchScope.assertRoleInBranch(user, [...STAFF_MANAGER_ROLES], branchId);
+    await this.assertStaffInBranch(branchId, staffId);
+
+    if (dto.endDate < dto.startDate) {
+      throw new BadRequestException("endDate must be on or after startDate");
+    }
+
+    const vacation = await this.prisma.staffVacation.create({
+      data: {
+        staffId,
+        branchId,
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
+        note: dto.note,
+        createdById: user.id,
+      },
+    });
+
+    await this.audit.record({
+      entity: "staff_vacation",
+      entityId: vacation.id,
+      action: "create",
+      newValue: { staffId, startDate: dto.startDate, endDate: dto.endDate },
+      actorId: user.id,
+    });
+
+    return vacation;
+  }
+
+  async removeVacation(user: AuthenticatedUser, branchId: string, staffId: string, vacationId: string) {
+    this.branchScope.assertRoleInBranch(user, [...STAFF_MANAGER_ROLES], branchId);
+    await this.assertStaffInBranch(branchId, staffId);
+
+    const vacation = await this.prisma.staffVacation.findUnique({ where: { id: vacationId } });
+    if (!vacation || vacation.staffId !== staffId || vacation.branchId !== branchId) {
+      throw new NotFoundException("Vacation not found for this staff member");
+    }
+
+    await this.prisma.staffVacation.delete({ where: { id: vacationId } });
+    await this.audit.record({
+      entity: "staff_vacation",
+      entityId: vacationId,
+      action: "delete",
+      actorId: user.id,
     });
   }
 

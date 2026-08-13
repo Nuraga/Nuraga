@@ -51,6 +51,7 @@ describe("StaffAttendanceService", () => {
   let prisma: any;
   let audit: { record: jest.Mock };
   let tokens: { verifyCheckinToken: jest.Mock };
+  let notifications: { create: jest.Mock };
   let branchScope: BranchScopeService;
   let service: StaffAttendanceService;
 
@@ -58,7 +59,13 @@ describe("StaffAttendanceService", () => {
     prisma = {
       staff: {
         findUnique: jest.fn(() =>
-          Promise.resolve({ id: "s1", userId: "u1", branchId, user: { fullName: "Иванова А." } }),
+          Promise.resolve({
+            id: "s1",
+            userId: "u1",
+            branchId,
+            expectedCheckInTime: null,
+            user: { fullName: "Иванова А." },
+          }),
         ),
       },
       staffAttendanceEvent: {
@@ -68,14 +75,16 @@ describe("StaffAttendanceService", () => {
           Promise.resolve({ id: "e1", occurredAt: args.data.occurredAt, ...args.data }),
         ),
       },
+      staffVacation: { findFirst: jest.fn(() => Promise.resolve(null)) },
       timesheetPeriod: { findUnique: jest.fn(() => Promise.resolve(null)) },
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
     tokens = {
       verifyCheckinToken: jest.fn(() => Promise.resolve({ staffId: "s1", branchId })),
     };
+    notifications = { create: jest.fn(() => Promise.resolve()) };
     branchScope = new BranchScopeService();
-    service = new StaffAttendanceService(prisma, branchScope, audit as any, tokens as any);
+    service = new StaffAttendanceService(prisma, branchScope, audit as any, tokens as any, notifications as any);
   });
 
   describe("recordScan", () => {
@@ -99,6 +108,41 @@ describe("StaffAttendanceService", () => {
       expect(prisma.staffAttendanceEvent.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ type: "CHECK_IN", source: "QR" }) }),
       );
+    });
+
+    it("notifies the employee when they check in after the expected (default 08:00) time", async () => {
+      jest.useFakeTimers().setSystemTime(new Date("2026-08-13T04:00:00Z")); // 09:00 Almaty
+      try {
+        await service.recordScan(device, branchId, "tok");
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(notifications.create).toHaveBeenCalledWith(
+        "u1",
+        "STAFF_LATE_CHECK_IN",
+        expect.stringContaining("09:00"),
+      );
+    });
+
+    it("does not notify when the check-in is on time", async () => {
+      jest.useFakeTimers().setSystemTime(new Date("2026-08-13T02:00:00Z")); // 07:00 Almaty
+      try {
+        await service.recordScan(device, branchId, "tok");
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it("does not notify a late check-in while the staff member is on an active vacation", async () => {
+      prisma.staffVacation.findFirst.mockResolvedValue({ id: "v1" });
+      jest.useFakeTimers().setSystemTime(new Date("2026-08-13T04:00:00Z")); // 09:00 Almaty
+      try {
+        await service.recordScan(device, branchId, "tok");
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(notifications.create).not.toHaveBeenCalled();
     });
 
     it("toggles to CHECK_OUT when the last event was CHECK_IN", async () => {
@@ -150,23 +194,51 @@ describe("StaffAttendanceService", () => {
       await expect(service.whoIsPresent(teacher, branchId)).rejects.toThrow(ForbiddenException);
     });
 
-    it("returns only staff whose latest event today is CHECK_IN", async () => {
+    it("returns only staff whose latest event today is CHECK_IN, flagging a late arrival", async () => {
       prisma.staffAttendanceEvent.findMany.mockResolvedValue([
         {
           staffId: "s1",
           type: "CHECK_IN",
-          occurredAt: new Date(),
-          staff: { user: { id: "u1", fullName: "Иванова А." } },
+          // 07:00 Almaty (UTC+5) — on time against the 08:00 default.
+          occurredAt: new Date("2026-08-13T02:00:00Z"),
+          staff: { expectedCheckInTime: null, user: { id: "u1", fullName: "Иванова А." } },
         },
         {
           staffId: "s2",
+          type: "CHECK_IN",
+          // 09:00 Almaty — late against the 08:00 default.
+          occurredAt: new Date("2026-08-13T04:00:00Z"),
+          staff: { expectedCheckInTime: null, user: { id: "u2", fullName: "Петров Б." } },
+        },
+        {
+          staffId: "s3",
           type: "CHECK_OUT",
           occurredAt: new Date(),
-          staff: { user: { id: "u2", fullName: "Петров Б." } },
+          staff: { expectedCheckInTime: null, user: { id: "u3", fullName: "Сидорова В." } },
         },
       ]);
       const present = await service.whoIsPresent(owner, branchId);
-      expect(present).toEqual([{ staffId: "s1", fullName: "Иванова А.", checkedInAt: expect.any(Date) }]);
+      expect(present).toEqual([
+        { staffId: "s1", fullName: "Иванова А.", checkedInAt: expect.any(Date), isLate: false },
+        { staffId: "s2", fullName: "Петров Б.", checkedInAt: expect.any(Date), isLate: true },
+      ]);
+    });
+
+    it("respects an individual expectedCheckInTime override instead of the default", async () => {
+      prisma.staffAttendanceEvent.findMany.mockResolvedValue([
+        {
+          staffId: "s1",
+          type: "CHECK_IN",
+          // 07:00 Almaty — on time against the 08:00 default, but late
+          // against this staff member's own 06:30 start time.
+          occurredAt: new Date("2026-08-13T02:00:00Z"),
+          staff: { expectedCheckInTime: "06:30", user: { id: "u1", fullName: "Иванова А." } },
+        },
+      ]);
+      const present = await service.whoIsPresent(owner, branchId);
+      expect(present).toEqual([
+        { staffId: "s1", fullName: "Иванова А.", checkedInAt: expect.any(Date), isLate: true },
+      ]);
     });
 
     it("allows a METHODIST to view who is present (следит за посещениями)", async () => {

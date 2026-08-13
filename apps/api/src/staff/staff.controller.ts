@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post, Delete, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Delete, Patch, Query, UseGuards } from "@nestjs/common";
 import { StaffService } from "./staff.service";
 import { CreateStaffDto } from "./dto/create-staff.dto";
 import { TerminateStaffDto } from "./dto/terminate-staff.dto";
+import { UpdateStaffScheduleDto } from "./dto/update-staff-schedule.dto";
+import { CreateVacationDto } from "./dto/create-vacation.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/access/current-user.decorator";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
@@ -37,6 +39,37 @@ export class StaffController {
     @Body() dto: TerminateStaffDto,
   ) {
     return this.staff.terminate(user, branchId, staffId, dto);
+  }
+
+  @Patch(":staffId/schedule")
+  updateSchedule(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("staffId") staffId: string,
+    @Body() dto: UpdateStaffScheduleDto,
+  ) {
+    return this.staff.updateSchedule(user, branchId, staffId, dto);
+  }
+
+  @Post(":staffId/vacations")
+  addVacation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("staffId") staffId: string,
+    @Body() dto: CreateVacationDto,
+  ) {
+    return this.staff.addVacation(user, branchId, staffId, dto);
+  }
+
+  @Delete(":staffId/vacations/:vacationId")
+  async removeVacation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("staffId") staffId: string,
+    @Param("vacationId") vacationId: string,
+  ) {
+    await this.staff.removeVacation(user, branchId, staffId, vacationId);
+    return { ok: true };
   }
 
   @Post(":staffId/groups/:groupId")

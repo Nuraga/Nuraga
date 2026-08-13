@@ -35,6 +35,7 @@ import { MenuModule } from "./menu/menu.module";
 import { PhotosModule } from "./photos/photos.module";
 import { NetworkAnalyticsModule } from "./analytics/network-analytics.module";
 import { ShiftsModule } from "./shifts/shifts.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { ShiftsModule } from "./shifts/shifts.module";
     PhotosModule,
     NetworkAnalyticsModule,
     ShiftsModule,
+    NotificationsModule,
   ],
   providers: [
     // RolesGuard is applied network-wide; routes without @Roles(...) pass

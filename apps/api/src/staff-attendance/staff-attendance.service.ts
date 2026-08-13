@@ -4,9 +4,38 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { AuditService } from "../common/audit/audit.service";
 import { TokenService } from "../auth/token.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import type { AuthenticatedDevice } from "../devices/device.types";
 import { CorrectStaffAttendanceDto } from "./dto/correct-staff-attendance.dto";
+
+// Individual per-staff override lives on Staff.expectedCheckInTime/
+// expectedCheckOutTime (null = these network-wide defaults).
+export const DEFAULT_CHECK_IN_TIME = "08:00";
+export const DEFAULT_CHECK_OUT_TIME = "18:00";
+
+// Server runs in UTC; the only real deployment is Kazakhstan (Asia/Almaty,
+// UTC+5, no DST), so lateness/vacation-day comparisons convert against a
+// hardcoded offset rather than pulling in a full IANA timezone library.
+// todayRangeUTC() below has the same pre-existing UTC-only "today" boundary
+// for the same reason — if the network ever spans multiple timezones, both
+// are where to add per-branch Branch.timezone-aware conversion.
+const LOCAL_UTC_OFFSET_MINUTES = 5 * 60;
+
+function toLocalHHMM(utc: Date): string {
+  const local = new Date(utc.getTime() + LOCAL_UTC_OFFSET_MINUTES * 60_000);
+  return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function toLocalDateOnly(utc: Date): Date {
+  const local = new Date(utc.getTime() + LOCAL_UTC_OFFSET_MINUTES * 60_000);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+}
+
+/** Lexicographic HH:MM comparison works because both sides are zero-padded 24h strings. */
+function isLateCheckIn(occurredAt: Date, expectedHHMM: string): boolean {
+  return toLocalHHMM(occurredAt) > expectedHHMM;
+}
 
 // Deliberately its own list, not a reuse of TIMESHEET_CLOSE_ROLES — that
 // const also gates closing the monthly payroll period and correcting CHILD
@@ -72,6 +101,7 @@ export class StaffAttendanceService {
     private readonly branchScope: BranchScopeService,
     private readonly audit: AuditService,
     private readonly tokens: TokenService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Called by the kiosk (DeviceAuthGuard) with the token scanned off a staff member's phone. */
@@ -123,6 +153,17 @@ export class StaffAttendanceService {
       actorId: null,
     });
 
+    if (type === "CHECK_IN") {
+      const expected = staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME;
+      if (isLateCheckIn(now, expected) && !(await this.isOnVacationToday(staff.id))) {
+        await this.notifications.create(
+          staff.userId,
+          "STAFF_LATE_CHECK_IN",
+          `Вы опоздали сегодня — отметились в ${toLocalHHMM(now)} (ожидалось до ${expected})`,
+        );
+      }
+    }
+
     return this.toScanResult(staff.user.fullName, type, event.occurredAt);
   }
 
@@ -133,7 +174,9 @@ export class StaffAttendanceService {
     const events = await this.prisma.staffAttendanceEvent.findMany({
       where: { branchId, occurredAt: { gte: start, lt: end } },
       orderBy: { occurredAt: "asc" },
-      include: { staff: { include: { user: { select: { id: true, fullName: true } } } } },
+      include: {
+        staff: { include: { user: { select: { id: true, fullName: true } } } },
+      },
     });
 
     const lastByStaff = new Map<string, (typeof events)[number]>();
@@ -145,6 +188,7 @@ export class StaffAttendanceService {
         staffId: event.staffId,
         fullName: event.staff.user.fullName,
         checkedInAt: event.occurredAt,
+        isLate: isLateCheckIn(event.occurredAt, event.staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME),
       }));
   }
 
@@ -172,7 +216,13 @@ export class StaffAttendanceService {
       orderBy: { occurredAt: "asc" },
     });
 
-    return { events, dailySummaries: computeDailySummaries(events) };
+    const expected = staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME;
+    const eventsWithLateness = events.map((event) => ({
+      ...event,
+      isLate: event.type === "CHECK_IN" ? isLateCheckIn(event.occurredAt, expected) : false,
+    }));
+
+    return { events: eventsWithLateness, dailySummaries: computeDailySummaries(events) };
   }
 
   /**
@@ -209,11 +259,25 @@ export class StaffAttendanceService {
       actorId: user.id,
     });
 
-    return event;
+    return {
+      ...event,
+      isLate:
+        event.type === "CHECK_IN"
+          ? isLateCheckIn(event.occurredAt, staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME)
+          : false,
+    };
   }
 
   private toScanResult(staffFullName: string, type: StaffAttendanceEventType, occurredAt: Date) {
     return { staffFullName, type, occurredAt };
+  }
+
+  private async isOnVacationToday(staffId: string): Promise<boolean> {
+    const today = toLocalDateOnly(new Date());
+    const vacation = await this.prisma.staffVacation.findFirst({
+      where: { staffId, startDate: { lte: today }, endDate: { gte: today } },
+    });
+    return Boolean(vacation);
   }
 
   private async assertPeriodOpen(branchId: string, date: Date): Promise<void> {

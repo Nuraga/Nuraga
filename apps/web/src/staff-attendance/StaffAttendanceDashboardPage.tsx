@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Form, Input, List, Modal, Select, Space, Table, Typography } from "antd";
+import { App, Button, Card, Form, Input, List, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import { staffAttendanceApi, type CorrectStaffAttendanceInput } from "../api/staffAttendance";
 import { staffApi } from "../api/staff";
 import { ApiError } from "../api/client";
@@ -71,6 +71,11 @@ export default function StaffAttendanceDashboardPage() {
               <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
                 с {new Date(p.checkedInAt).toLocaleTimeString("ru-RU")}
               </Typography.Text>
+              {p.isLate && (
+                <Tag color="gold" style={{ marginLeft: 8 }}>
+                  Опоздание
+                </Tag>
+              )}
             </List.Item>
           )}
         />
@@ -109,7 +114,16 @@ export default function StaffAttendanceDashboardPage() {
             locale={{ emptyText: "Нет событий" }}
             columns={[
               { title: "Время", dataIndex: "occurredAt", render: (v: string) => new Date(v).toLocaleString("ru-RU") },
-              { title: "Тип", dataIndex: "type", render: (t: string) => (t === "CHECK_IN" ? "Приход" : "Уход") },
+              {
+                title: "Тип",
+                dataIndex: "type",
+                render: (t: string, record) => (
+                  <Space>
+                    {t === "CHECK_IN" ? "Приход" : "Уход"}
+                    {record.isLate && <Tag color="gold">Опоздание</Tag>}
+                  </Space>
+                ),
+              },
               { title: "Источник", dataIndex: "source", render: (s: string) => (s === "QR" ? "QR" : "Вручную") },
               { title: "Причина правки", dataIndex: "correctionReason", render: (r: string | null) => r ?? "—" },
             ]}

@@ -19,6 +19,8 @@ export interface StaffAttendanceEvent {
   correctionReason: string | null;
   correctionById: string | null;
   createdAt: string;
+  /** CHECK_IN after the staff member's expected time (individual or the 08:00 network default). Always false for CHECK_OUT. */
+  isLate: boolean;
 }
 
 export interface StaffAttendanceDaySummary {
@@ -30,6 +32,7 @@ export interface PresentStaff {
   staffId: string;
   fullName: string;
   checkedInAt: string;
+  isLate: boolean;
 }
 
 export interface CorrectStaffAttendanceInput {

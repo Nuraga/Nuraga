@@ -33,6 +33,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useBranch } from "./BranchContext";
 import { useBranchRoles, hasAnyRole } from "../auth/roles";
 import type { Role } from "../api/types";
+import NotificationBell from "./NotificationBell";
 
 const { Header, Sider, Content } = Layout;
 
@@ -252,6 +253,7 @@ export default function AppLayout() {
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
           />
           <div style={{ flex: 1 }} />
+          <NotificationBell />
           <Dropdown
             menu={{
               items: userMenuItems,

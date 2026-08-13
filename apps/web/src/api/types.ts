@@ -63,6 +63,17 @@ export interface GroupOccupancy {
   isOverMax: boolean;
 }
 
+export interface StaffVacation {
+  id: string;
+  staffId: string;
+  branchId: string;
+  startDate: string;
+  endDate: string;
+  note: string | null;
+  createdById: string;
+  createdAt: string;
+}
+
 export interface Staff {
   id: string;
   userId: string;
@@ -70,9 +81,23 @@ export interface Staff {
   position: string;
   hiredAt: string | null;
   terminatedAt: string | null;
+  expectedCheckInTime: string | null;
+  expectedCheckOutTime: string | null;
   createdAt: string;
   groups?: { staffId: string; groupId: string }[];
   user?: { id: string; fullName: string; email: string | null };
+  vacations?: StaffVacation[];
+}
+
+export type NotificationType = "STAFF_LATE_CHECK_IN";
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
 }
 
 export interface Family {

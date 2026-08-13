@@ -4,9 +4,10 @@ import { StaffCheckinService } from "./staff-checkin.service";
 import { StaffAttendanceService } from "./staff-attendance.service";
 import { AuthModule } from "../auth/auth.module";
 import { DevicesModule } from "../devices/devices.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [AuthModule, DevicesModule],
+  imports: [AuthModule, DevicesModule, NotificationsModule],
   controllers: [StaffAttendanceController],
   providers: [StaffCheckinService, StaffAttendanceService],
   exports: [StaffCheckinService, StaffAttendanceService],
