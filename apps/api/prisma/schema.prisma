@@ -28,6 +28,13 @@ enum Role {
   MANAGER
   ACCOUNTANT
   TEACHER
+  // Assists teachers; no group/child-data access — clocks in/out via kiosk
+  // QR and receives tasks from a METHODIST or заведующий (BRANCH_MANAGER).
+  NANNY
+  // Oversees TEACHER/NANNY staff within a branch: assigns them tasks and
+  // monitors their kiosk attendance. Deliberately NOT in STAFF_MANAGER_ROLES
+  // (staff.service.ts) — hiring/firing stays with OWNER/BRANCH_MANAGER.
+  METHODIST
   PARENT
 }
 

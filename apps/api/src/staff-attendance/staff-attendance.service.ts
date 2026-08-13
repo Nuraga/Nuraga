@@ -1,13 +1,20 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import type { StaffAttendanceEventType } from "@prisma/client";
+import type { Role, StaffAttendanceEventType } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { AuditService } from "../common/audit/audit.service";
 import { TokenService } from "../auth/token.service";
-import { TIMESHEET_CLOSE_ROLES } from "../attendance/timesheet.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import type { AuthenticatedDevice } from "../devices/device.types";
 import { CorrectStaffAttendanceDto } from "./dto/correct-staff-attendance.dto";
+
+// Deliberately its own list, not a reuse of TIMESHEET_CLOSE_ROLES — that
+// const also gates closing the monthly payroll period and correcting CHILD
+// attendance (attendance/timesheet.service.ts), which a METHODIST has no
+// business doing. Viewing/correcting STAFF kiosk attendance ("следить за
+// посещениями воспитателей и нянь") is METHODIST's whole job, so it's added
+// here alongside the usual branch-management roles.
+const STAFF_ATTENDANCE_MANAGE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT", "METHODIST"];
 
 // A repeat valid scan of the same person this soon after the last one is
 // almost certainly a double-read of the same QR frame, not a real second
@@ -120,7 +127,7 @@ export class StaffAttendanceService {
   }
 
   async whoIsPresent(user: AuthenticatedUser, branchId: string) {
-    this.branchScope.assertRoleInBranch(user, TIMESHEET_CLOSE_ROLES, branchId);
+    this.branchScope.assertRoleInBranch(user, STAFF_ATTENDANCE_MANAGE_ROLES, branchId);
 
     const { start, end } = todayRangeUTC();
     const events = await this.prisma.staffAttendanceEvent.findMany({
@@ -153,7 +160,7 @@ export class StaffAttendanceService {
     if (staff.userId === user.id) {
       this.branchScope.assertBranchAccess(user, branchId);
     } else {
-      this.branchScope.assertRoleInBranch(user, TIMESHEET_CLOSE_ROLES, branchId);
+      this.branchScope.assertRoleInBranch(user, STAFF_ATTENDANCE_MANAGE_ROLES, branchId);
     }
 
     const events = await this.prisma.staffAttendanceEvent.findMany({
@@ -177,7 +184,7 @@ export class StaffAttendanceService {
    * trail even when the period is still open.
    */
   async correctEvent(user: AuthenticatedUser, branchId: string, dto: CorrectStaffAttendanceDto) {
-    this.branchScope.assertRoleInBranch(user, TIMESHEET_CLOSE_ROLES, branchId);
+    this.branchScope.assertRoleInBranch(user, STAFF_ATTENDANCE_MANAGE_ROLES, branchId);
 
     const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
     if (!staff || staff.branchId !== branchId) throw new NotFoundException("Staff not found in this branch");

@@ -45,6 +45,7 @@ describe("StaffAttendanceService", () => {
   const owner = user({ id: "owner1", grants: [{ branchId, role: "OWNER" }] });
   const teacher = user({ id: "u1", grants: [{ branchId, role: "TEACHER" }] });
   const otherTeacher = user({ id: "u2", grants: [{ branchId, role: "TEACHER" }] });
+  const methodist = user({ id: "meth1", grants: [{ branchId, role: "METHODIST" }] });
   const device = { id: "d1", branchId };
 
   let prisma: any;
@@ -166,6 +167,10 @@ describe("StaffAttendanceService", () => {
       ]);
       const present = await service.whoIsPresent(owner, branchId);
       expect(present).toEqual([{ staffId: "s1", fullName: "Иванова А.", checkedInAt: expect.any(Date) }]);
+    });
+
+    it("allows a METHODIST to view who is present (следит за посещениями)", async () => {
+      await expect(service.whoIsPresent(methodist, branchId)).resolves.toEqual([]);
     });
   });
 

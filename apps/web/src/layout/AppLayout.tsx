@@ -41,6 +41,8 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles?: Role[];
+  /** Hides the item for these roles even when `roles` is unset (open to everyone else). */
+  excludeRoles?: Role[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -52,7 +54,15 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["OWNER", "SUPERADMIN"],
   },
   { key: "/branches", label: "Филиалы", icon: <BankOutlined />, roles: ["OWNER", "SUPERADMIN"] },
-  { key: "/groups", label: "Группы", icon: <ApartmentOutlined /> },
+  {
+    key: "/groups",
+    label: "Группы",
+    icon: <ApartmentOutlined />,
+    // NANNY assists but isn't tied to a group's roster/data — her whole
+    // scope is kiosk check-in/out + tasks (see ТЗ chat: "няне не доступны
+    // группы").
+    excludeRoles: ["NANNY"],
+  },
   { key: "/staff", label: "Сотрудники", icon: <TeamOutlined /> },
   { key: "/shifts", label: "График смен", icon: <ClockCircleOutlined /> },
   {
@@ -65,14 +75,19 @@ const NAV_ITEMS: NavItem[] = [
     key: "/tasks",
     label: "Задачи",
     icon: <CheckSquareOutlined />,
-    roles: ["OWNER", "BRANCH_MANAGER", "TEACHER"],
+    // NANNY sees her own assigned tasks (StaffTasksPage falls back to
+    // "мои задачи" for any non-management role); METHODIST assigns tasks
+    // to TEACHER/NANNY like a manager (STAFF_TASK_ROLES in tasks.service.ts).
+    roles: ["OWNER", "BRANCH_MANAGER", "TEACHER", "NANNY", "METHODIST"],
   },
   { key: "/my-qr", label: "Мой QR", icon: <QrcodeOutlined /> },
   {
     key: "/staff-attendance",
     label: "Посещаемость персонала",
     icon: <CalendarOutlined />,
-    roles: ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT"],
+    // METHODIST monitors TEACHER/NANNY kiosk attendance — see
+    // STAFF_ATTENDANCE_MANAGE_ROLES in staff-attendance.service.ts.
+    roles: ["OWNER", "BRANCH_MANAGER", "ACCOUNTANT", "METHODIST"],
   },
   {
     key: "/devices",
@@ -160,7 +175,14 @@ export default function AppLayout() {
 
   const menuItems = useMemo<MenuProps["items"]>(
     () =>
-      NAV_ITEMS.filter((item) => !item.roles || hasAnyRole(branchRoles, item.roles)).map((item) => ({
+      NAV_ITEMS.filter(
+        (item) =>
+          (!item.roles || hasAnyRole(branchRoles, item.roles)) &&
+          // Literal role membership only — NOT hasAnyRole, whose
+          // hasNetworkAccess bypass would otherwise also hide this item
+          // from OWNER/SUPERADMIN (who are never literally NANNY).
+          !(item.excludeRoles && branchRoles.roles.some((r) => item.excludeRoles!.includes(r))),
+      ).map((item) => ({
         key: item.key,
         icon: item.icon,
         label: item.label,

@@ -9,12 +9,13 @@ import { CreateTaskDto } from "./dto/create-task.dto";
 // ТЗ §2.2 has no dedicated "Задачи" row — reusing the "Лиды" row's roles for
 // lead/family-linked tasks (MANAGER = менеджер по продажам, needs this for
 // their own follow-ups). Tasks with neither leadId nor familyId are general
-// staff assignments (заведующий -> воспитатель/няня) — MANAGER deliberately
-// has NO access to these; only OWNER/BRANCH_MANAGER (SUPERADMIN bypasses via
-// hasNetworkAccess) may assign or manage them. Any staff member can always
-// read/update the status of a task assigned to them regardless of role.
+// staff assignments (заведующий/методист -> воспитатель/няня) — MANAGER
+// deliberately has NO access to these; only OWNER/BRANCH_MANAGER/METHODIST
+// (SUPERADMIN bypasses via hasNetworkAccess) may assign or manage them. Any
+// staff member can always read/update the status of a task assigned to them
+// regardless of role.
 const SALES_TASK_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
-const STAFF_TASK_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER"];
+const STAFF_TASK_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "METHODIST"];
 
 export interface TaskFilters {
   leadId?: string;

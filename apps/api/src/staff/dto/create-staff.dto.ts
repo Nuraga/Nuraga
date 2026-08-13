@@ -35,7 +35,7 @@ export class CreateStaffDto {
   password?: string;
 
   @IsOptional()
-  @IsIn(["BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "TEACHER"])
+  @IsIn(["BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "TEACHER", "NANNY", "METHODIST"])
   role?: Role;
 
   @IsString()

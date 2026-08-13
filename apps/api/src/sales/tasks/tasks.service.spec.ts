@@ -21,6 +21,7 @@ describe("TasksService", () => {
   const branchManager = user({ id: "bm1", grants: [{ branchId, role: "BRANCH_MANAGER" }] });
   const teacher = user({ id: "teacher1", grants: [{ branchId, role: "TEACHER" }] });
   const otherTeacher = user({ id: "teacher2", grants: [{ branchId, role: "TEACHER" }] });
+  const methodist = user({ id: "meth1", grants: [{ branchId, role: "METHODIST" }] });
 
   let prisma: any;
   let audit: { record: jest.Mock };
@@ -67,6 +68,15 @@ describe("TasksService", () => {
         assignedToId: "teacher1",
       } as any);
       expect(task).toMatchObject({ branchId, leadId: undefined, familyId: undefined, description: "Проверить группу" });
+    });
+
+    it("allows a METHODIST to create a general staff task (даёт задания воспитателям/няням)", async () => {
+      const task = await service.create(methodist, branchId, {
+        description: "Проверить группу",
+        dueAt: "2026-09-01",
+        assignedToId: "teacher1",
+      } as any);
+      expect(task).toMatchObject({ description: "Проверить группу" });
     });
 
     it("rejects a sales manager (MANAGER) from creating a general staff task", async () => {

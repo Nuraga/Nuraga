@@ -14,6 +14,8 @@ const ROLE_LABELS: Record<string, string> = {
   MANAGER: "Менеджер",
   ACCOUNTANT: "Бухгалтер",
   TEACHER: "Воспитатель",
+  NANNY: "Няня",
+  METHODIST: "Методист",
 };
 
 export default function StaffPage() {
