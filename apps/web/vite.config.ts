@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg"],
+      includeAssets: ["apple-touch-icon.png", "favicon-32.png"],
       manifest: {
         name: "Детсад CRM",
         short_name: "Детсад CRM",
@@ -17,7 +17,14 @@ export default defineConfig({
         display: "standalone",
         background_color: "#ffffff",
         theme_color: "#2563eb",
-        icons: [],
+        icons: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+          // "any maskable" so Android can safely inset it into a circle/
+          // squircle without clipping the chick — our crop already has
+          // margin on every side for exactly this.
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
       },
       workbox: {
         navigateFallbackDenylist: [/^\/api/],
