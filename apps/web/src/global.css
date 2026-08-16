@@ -1,0 +1,32 @@
+/* Mobile-responsiveness safety net. No page/table markup elsewhere needs to
+   change — this covers all of them in one place:
+   - The page itself must never grow wider than the viewport (whatever
+     overflows gets clipped instead of dragging the whole layout sideways).
+   - Wide content (mainly antd <Table>, 23 pages use it) scrolls
+     horizontally *inside its own box* instead of blowing out the page.
+   See AppLayout.tsx for the matching Sider/Header responsive changes. */
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.ant-table-wrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+img {
+  max-width: 100%;
+}
+
+/* Hides the "Управляющий филиалом Имя Фамилия" text next to the header
+   avatar on narrow screens — the dropdown menu itself still has the full
+   name, this is purely to stop the header from wrapping/overflowing on a
+   phone-width viewport. */
+@media (max-width: 480px) {
+  .app-header-username {
+    display: none;
+  }
+}

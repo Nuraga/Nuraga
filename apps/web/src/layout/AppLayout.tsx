@@ -173,6 +173,10 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  // Tracks whether the Sider is currently in its auto-collapsed
+  // (breakpoint="lg") state vs. manually toggled — used to auto-close it
+  // after picking a page on mobile, same as a drawer nav would.
+  const [isMobile, setIsMobile] = useState(false);
 
   const menuItems = useMemo<MenuProps["items"]>(
     () =>
@@ -221,7 +225,23 @@ export default function AppLayout() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed}>
+      <Sider
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        // Below "lg" (992px, i.e. any phone and most tablets in portrait)
+        // the sider auto-collapses to width 0 and antd renders its own
+        // floating toggle button to bring it back as an overlay — the
+        // standard antd stand-in for a mobile drawer nav, no custom
+        // Drawer needed.
+        breakpoint="lg"
+        collapsedWidth={0}
+        onBreakpoint={(broken) => {
+          setIsMobile(broken);
+          setCollapsed(broken);
+        }}
+        style={isMobile ? { position: "fixed", height: "100vh", zIndex: 10 } : undefined}
+      >
         <div
           style={{
             height: 48,
@@ -241,13 +261,28 @@ export default function AppLayout() {
           mode="inline"
           selectedKeys={[selectedKey]}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => {
+            navigate(key);
+            if (isMobile) setCollapsed(true);
+          }}
         />
       </Sider>
       <Layout>
-        <Header style={{ background: "#fff", padding: "0 16px", display: "flex", alignItems: "center", gap: 16 }}>
+        <Header
+          style={{
+            background: "#fff",
+            padding: "0 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            height: "auto",
+            minHeight: 64,
+            paddingLeft: isMobile ? 56 : 16, // room for the Sider's floating toggle button
+          }}
+        >
           <Select
-            style={{ width: 260 }}
+            style={{ flex: "0 1 260px", minWidth: 140 }}
             value={selectedBranchId ?? undefined}
             onChange={setSelectedBranchId}
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
@@ -265,12 +300,12 @@ export default function AppLayout() {
           >
             <Flex align="center" gap={4} style={{ cursor: "pointer" }}>
               <UserOutlined />
-              <Typography.Text>{user?.fullName}</Typography.Text>
+              <Typography.Text className="app-header-username">{user?.fullName}</Typography.Text>
               <DownOutlined style={{ fontSize: 10 }} />
             </Flex>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 16 }}>
+        <Content style={{ margin: 16, minWidth: 0 }}>
           <Outlet />
         </Content>
       </Layout>
