@@ -30,3 +30,17 @@ img {
     display: none;
   }
 }
+
+/* Press-and-hold is the only way to start a drag on touch (see the
+   TouchSensor delay in StaffTasksBoard) and there's nothing on screen that
+   would suggest it, so the board shows a one-line hint — but only where the
+   gesture actually applies. Mouse users just drag. */
+.touch-drag-hint {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-drag-hint {
+    display: block;
+  }
+}

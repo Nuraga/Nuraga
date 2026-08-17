@@ -1,7 +1,8 @@
 import { useRef } from "react";
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -45,15 +46,16 @@ function TaskReportAttachment({ branchId, task }: { branchId: string; task: Task
     attach.mutate(file);
   }
 
-  // Bare mousedown/click (no movement) still reaches nested elements under
-  // dnd-kit's PointerSensor (activationConstraint requires 5px of drag
-  // distance before it takes over) — stopPropagation just avoids any
-  // ambiguity with the card's own drag listeners on the button itself.
+  // Keeps the card's drag listeners out of it while the user is aiming at
+  // these buttons. touchstart matters as much as mousedown here: without it
+  // a long press on "Отчёт о работе" trips the TouchSensor's 250ms hold and
+  // starts dragging the card instead of opening the file picker.
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const stopProps = { onPointerDown: stop, onMouseDown: stop, onTouchStart: stop };
 
   if (task.reportDownloadUrl) {
     return (
-      <div onPointerDown={stop} style={{ marginTop: 4 }}>
+      <div {...stopProps} style={{ marginTop: 4 }}>
         <Space size={4}>
           <a href={task.reportDownloadUrl} target="_blank" rel="noreferrer">
             <PaperClipOutlined /> {task.reportFileName}
@@ -71,7 +73,7 @@ function TaskReportAttachment({ branchId, task }: { branchId: string; task: Task
   }
 
   return (
-    <div onPointerDown={stop} style={{ marginTop: 4 }}>
+    <div {...stopProps} style={{ marginTop: 4 }}>
       <input ref={inputRef} type="file" hidden onChange={handleFileChange} />
       <Button
         type="text"
@@ -166,7 +168,16 @@ export default function StaffTasksBoard({
 }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Mouse and touch need different activation gestures, so this can't be a
+  // single PointerSensor: on a phone the browser claims a finger-drag as a
+  // scroll before any distance threshold is met, and the drag never starts
+  // (reported from the field — "на телефоне невозможно перетащить").
+  // Press-and-hold is the standard touch escape hatch: a quick swipe still
+  // scrolls the board/page, holding for 250ms grabs the card instead.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TaskBoardStatus }) =>
@@ -191,6 +202,9 @@ export default function StaffTasksBoard({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <Typography.Text type="secondary" className="touch-drag-hint" style={{ fontSize: 12, marginBottom: 8 }}>
+        Чтобы перенести задачу, нажмите на карточку и удерживайте, затем ведите её в нужный столбец.
+      </Typography.Text>
       <Flex gap={12} style={{ overflowX: "auto", paddingBottom: 8 }}>
         {TASK_BOARD_STATUSES.map((status) => (
           <Column
