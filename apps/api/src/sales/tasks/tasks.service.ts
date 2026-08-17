@@ -27,6 +27,13 @@ const STAFF_TASK_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "METHODIST"];
 // stay obviously in sync.
 export const REPORT_RETENTION_DAYS = 30;
 
+// How long a finished task stays on the board before it's archived to the
+// Telegram channel and purged from the DB (agreed with the user: "через
+// месяц он удаляется насовсем, архивом будет служить телеграм канал").
+// Counted from completedAt, not creation. Only DONE tasks are ever purged —
+// an open task lives forever no matter how old.
+export const COMPLETED_TASK_RETENTION_DAYS = 30;
+
 export interface TaskFilters {
   leadId?: string;
   familyId?: string;

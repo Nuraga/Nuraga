@@ -67,4 +67,37 @@ export class TelegramService {
       return false;
     }
   }
+
+  /**
+   * Archives a plain-text record to the backup channel. Unlike archiveFile,
+   * callers use this where the channel copy is the *only* remaining copy
+   * (task records being purged) — so they must check the return value and
+   * skip the delete when it's false, rather than treating it as best-effort.
+   */
+  async archiveMessage(text: string): Promise<boolean> {
+    if (!this.isConfigured()) {
+      this.logger.warn("Telegram archiving skipped: TELEGRAM_BOT_TOKEN / TELEGRAM_BACKUP_CHANNEL_ID not configured");
+      return false;
+    }
+
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: this.backupChannelId,
+          text: text.slice(0, 4096), // Telegram message limit
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        this.logger.warn(`Telegram sendMessage failed: ${res.status} ${body}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      this.logger.warn(`Telegram sendMessage threw: ${err}`);
+      return false;
+    }
+  }
 }
