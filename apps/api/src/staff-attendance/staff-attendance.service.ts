@@ -8,6 +8,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import type { AuthenticatedDevice } from "../devices/device.types";
 import { CorrectStaffAttendanceDto } from "./dto/correct-staff-attendance.dto";
+import { ExpectedScheduleService, resolveExpected } from "./expected-schedule.service";
 
 // Individual per-staff override lives on Staff.expectedCheckInTime/
 // expectedCheckOutTime (null = these network-wide defaults).
@@ -30,7 +31,7 @@ export function toLocalHHMM(utc: Date): string {
   return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-function toLocalDateOnly(utc: Date): Date {
+export function toLocalDateOnly(utc: Date): Date {
   const local = new Date(utc.getTime() + LOCAL_UTC_OFFSET_MINUTES * 60_000);
   return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
 }
@@ -105,6 +106,7 @@ export class StaffAttendanceService {
     private readonly audit: AuditService,
     private readonly tokens: TokenService,
     private readonly notifications: NotificationsService,
+    private readonly expectedSchedule: ExpectedScheduleService,
   ) {}
 
   /** Called by the kiosk (DeviceAuthGuard) with the token scanned off a staff member's phone. */
@@ -157,7 +159,7 @@ export class StaffAttendanceService {
     });
 
     if (type === "CHECK_IN") {
-      const expected = staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME;
+      const { checkIn: expected } = await this.expectedSchedule.forInstant(staff, now);
       if (isLateCheckIn(now, expected) && !(await this.isOnVacationToday(staff.id))) {
         await this.notifications.create(
           staff.userId,
@@ -185,14 +187,33 @@ export class StaffAttendanceService {
     const lastByStaff = new Map<string, (typeof events)[number]>();
     for (const event of events) lastByStaff.set(event.staffId, event);
 
-    return [...lastByStaff.values()]
-      .filter((event) => event.type === "CHECK_IN")
-      .map((event) => ({
+    const present = [...lastByStaff.values()].filter((event) => event.type === "CHECK_IN");
+    const windows = await this.shiftWindowsFor(present.map((e) => ({ staffId: e.staffId, at: e.occurredAt })));
+
+    return present.map((event) => {
+      const day = toLocalDateOnly(event.occurredAt);
+      const expected = resolveExpected(
+        windows.get(ExpectedScheduleService.key(event.staffId, day)),
+        event.staff,
+      );
+      return {
         staffId: event.staffId,
         fullName: event.staff.user.fullName,
         checkedInAt: event.occurredAt,
-        isLate: isLateCheckIn(event.occurredAt, event.staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME),
-      }));
+        isLate: isLateCheckIn(event.occurredAt, expected.checkIn),
+      };
+    });
+  }
+
+  /** One batched shift query covering every (staff, day) pair in a list response — avoids an N+1 per event. */
+  private async shiftWindowsFor(pairs: Array<{ staffId: string; at: Date }>) {
+    if (pairs.length === 0) return new Map();
+    const days = pairs.map((p) => toLocalDateOnly(p.at).getTime());
+    return this.expectedSchedule.shiftWindows(
+      pairs.map((p) => p.staffId),
+      new Date(Math.min(...days)),
+      new Date(Math.max(...days)),
+    );
   }
 
   async listForStaff(
@@ -219,11 +240,17 @@ export class StaffAttendanceService {
       orderBy: { occurredAt: "asc" },
     });
 
-    const expected = staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME;
-    const eventsWithLateness = events.map((event) => ({
-      ...event,
-      isLate: event.type === "CHECK_IN" ? isLateCheckIn(event.occurredAt, expected) : false,
-    }));
+    // Spans many days, so lateness is resolved per event-day: a shift on one
+    // day must not leak into the judgement of another.
+    const windows = await this.shiftWindowsFor(events.map((e) => ({ staffId, at: e.occurredAt })));
+    const eventsWithLateness = events.map((event) => {
+      const day = toLocalDateOnly(event.occurredAt);
+      const expected = resolveExpected(windows.get(ExpectedScheduleService.key(staffId, day)), staff);
+      return {
+        ...event,
+        isLate: event.type === "CHECK_IN" ? isLateCheckIn(event.occurredAt, expected.checkIn) : false,
+      };
+    });
 
     return { events: eventsWithLateness, dailySummaries: computeDailySummaries(events) };
   }
@@ -262,12 +289,10 @@ export class StaffAttendanceService {
       actorId: user.id,
     });
 
+    const { checkIn: expected } = await this.expectedSchedule.forInstant(staff, event.occurredAt);
     return {
       ...event,
-      isLate:
-        event.type === "CHECK_IN"
-          ? isLateCheckIn(event.occurredAt, staff.expectedCheckInTime ?? DEFAULT_CHECK_IN_TIME)
-          : false,
+      isLate: event.type === "CHECK_IN" ? isLateCheckIn(event.occurredAt, expected) : false,
     };
   }
 

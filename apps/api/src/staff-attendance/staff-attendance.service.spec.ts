@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { StaffAttendanceService, computeDailySummaries } from "./staff-attendance.service";
+import { ExpectedScheduleService } from "./expected-schedule.service";
 import type { AuthenticatedUser } from "../common/access/branch-access.types";
 
 function user(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser {
@@ -77,14 +78,26 @@ describe("StaffAttendanceService", () => {
       },
       staffVacation: { findFirst: jest.fn(() => Promise.resolve(null)) },
       timesheetPeriod: { findUnique: jest.fn(() => Promise.resolve(null)) },
+      // No scheduled shifts: these tests assert the staff-card fallback.
+      shift: { findMany: jest.fn(() => Promise.resolve([])) },
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
     tokens = {
       verifyCheckinToken: jest.fn(() => Promise.resolve({ staffId: "s1", branchId })),
     };
     notifications = { create: jest.fn(() => Promise.resolve()) };
+    // Real resolver over the mocked prisma: with no shift rows it falls back
+    // to the staff card, which is what these tests assert against.
+    const expectedSchedule = new ExpectedScheduleService(prisma);
     branchScope = new BranchScopeService();
-    service = new StaffAttendanceService(prisma, branchScope, audit as any, tokens as any, notifications as any);
+    service = new StaffAttendanceService(
+      prisma,
+      branchScope,
+      audit as any,
+      tokens as any,
+      notifications as any,
+      expectedSchedule,
+    );
   });
 
   describe("recordScan", () => {

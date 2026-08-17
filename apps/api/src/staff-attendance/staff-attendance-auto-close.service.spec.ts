@@ -18,6 +18,7 @@ function checkInEvent(overrides: Record<string, unknown> = {}) {
       id: "s1",
       userId: "u1",
       branchId: "b1",
+      expectedCheckInTime: null,
       expectedCheckOutTime: null,
       user: { fullName: "Айгуль Н." },
     },
@@ -29,6 +30,7 @@ describe("StaffAttendanceAutoCloseService", () => {
   let prisma: any;
   let audit: { record: jest.Mock };
   let notifications: { create: jest.Mock };
+  let expectedSchedule: { shiftWindows: jest.Mock };
   let service: StaffAttendanceAutoCloseService;
 
   beforeEach(() => {
@@ -41,7 +43,14 @@ describe("StaffAttendanceAutoCloseService", () => {
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
     notifications = { create: jest.fn(() => Promise.resolve()) };
-    service = new StaffAttendanceAutoCloseService(prisma, audit as any, notifications as any);
+    // No scheduled shifts by default — these tests cover the staff-card path.
+    expectedSchedule = { shiftWindows: jest.fn(() => Promise.resolve(new Map())) };
+    service = new StaffAttendanceAutoCloseService(
+      prisma,
+      audit as any,
+      notifications as any,
+      expectedSchedule as any,
+    );
   });
 
   afterEach(() => jest.useRealTimers());
@@ -77,6 +86,21 @@ describe("StaffAttendanceAutoCloseService", () => {
 
     const created = prisma.staffAttendanceEvent.create.mock.calls[0][0].data;
     expect(created.occurredAt.toISOString()).toBe("2026-08-17T09:30:00.000Z"); // 14:30 local
+  });
+
+  it("prefers a scheduled shift's end over the staff card", async () => {
+    prisma.staffAttendanceEvent.findMany.mockResolvedValue([
+      checkInEvent({ staff: { ...checkInEvent().staff, expectedCheckOutTime: "18:00" } }),
+    ]);
+    // Scheduled 08:00-14:00 that day, so the card's 18:00 must not win.
+    expectedSchedule.shiftWindows.mockResolvedValue(
+      new Map([["s1|2026-08-17", { start: "08:00", end: "14:00" }]]),
+    );
+
+    await service.closeForgottenCheckOuts();
+
+    const created = prisma.staffAttendanceEvent.create.mock.calls[0][0].data;
+    expect(created.occurredAt.toISOString()).toBe("2026-08-17T09:00:00.000Z"); // 14:00 local
   });
 
   it("leaves someone who already scanned out alone", async () => {

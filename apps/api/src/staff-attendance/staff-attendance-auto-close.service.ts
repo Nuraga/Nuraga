@@ -3,7 +3,8 @@ import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AuditService } from "../common/audit/audit.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { DEFAULT_CHECK_OUT_TIME, LOCAL_UTC_OFFSET_MINUTES, toLocalHHMM } from "./staff-attendance.service";
+import { LOCAL_UTC_OFFSET_MINUTES, toLocalDateOnly, toLocalHHMM } from "./staff-attendance.service";
+import { ExpectedScheduleService, resolveExpected } from "./expected-schedule.service";
 
 // Staff who forget to scan out would otherwise leave a CHECK_IN dangling
 // forever, and worked-hours pairing (computeDailySummaries) needs both ends
@@ -24,6 +25,7 @@ export class StaffAttendanceAutoCloseService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly expectedSchedule: ExpectedScheduleService,
   ) {}
 
   @Cron(AUTO_CLOSE_CRON)
@@ -46,6 +48,7 @@ export class StaffAttendanceAutoCloseService {
             id: true,
             userId: true,
             branchId: true,
+            expectedCheckInTime: true,
             expectedCheckOutTime: true,
             user: { select: { fullName: true } },
           },
@@ -58,9 +61,21 @@ export class StaffAttendanceAutoCloseService {
     for (const event of events) lastByStaff.set(event.staffId, event);
     const open = [...lastByStaff.values()].filter((e) => e.type === "CHECK_IN");
 
+    // Same precedence as lateness (scheduled shift beats the staff card), so
+    // a person scheduled until 14:00 isn't auto-closed at the card's 18:00.
+    const today = toLocalDateOnly(now);
+    const windows = await this.expectedSchedule.shiftWindows(
+      open.map((e) => e.staffId),
+      today,
+      today,
+    );
+
     let closed = 0;
     for (const checkIn of open) {
-      const expected = checkIn.staff.expectedCheckOutTime ?? DEFAULT_CHECK_OUT_TIME;
+      const { checkOut: expected } = resolveExpected(
+        windows.get(ExpectedScheduleService.key(checkIn.staffId, toLocalDateOnly(checkIn.occurredAt))),
+        checkIn.staff,
+      );
       let occurredAt = this.localTimeToUTC(checkIn.occurredAt, expected);
 
       // An evening arrival (or an expected time earlier than the actual
