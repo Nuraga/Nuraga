@@ -89,7 +89,11 @@ export interface Staff {
   vacations?: StaffVacation[];
 }
 
-export type NotificationType = "STAFF_LATE_CHECK_IN";
+export type NotificationType =
+  | "STAFF_LATE_CHECK_IN"
+  | "TASK_ASSIGNED"
+  | "TASK_COMPLETED"
+  | "TASK_REPORT_SUBMITTED";
 
 export interface AppNotification {
   id: string;

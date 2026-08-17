@@ -27,6 +27,7 @@ describe("TasksService", () => {
   let audit: { record: jest.Mock };
   let fileUrls: { sign: jest.Mock };
   let storage: { save: jest.Mock; delete: jest.Mock };
+  let notifications: { create: jest.Mock };
   let branchScope: BranchScopeService;
   let service: TasksService;
 
@@ -58,8 +59,16 @@ describe("TasksService", () => {
     audit = { record: jest.fn(() => Promise.resolve()) };
     fileUrls = { sign: jest.fn(() => Promise.resolve("signed-token")) };
     storage = { save: jest.fn(() => Promise.resolve()), delete: jest.fn(() => Promise.resolve()) };
+    notifications = { create: jest.fn(() => Promise.resolve()) };
     branchScope = new BranchScopeService();
-    service = new TasksService(prisma, branchScope, audit as any, fileUrls as any, storage as any);
+    service = new TasksService(
+      prisma,
+      branchScope,
+      audit as any,
+      fileUrls as any,
+      storage as any,
+      notifications as any,
+    );
   });
 
   describe("create", () => {
@@ -223,6 +232,133 @@ describe("TasksService", () => {
       });
       const task = await service.updateStatus(branchManager, branchId, "t1", "IN_PROGRESS");
       expect(task.status).toBe("IN_PROGRESS");
+    });
+  });
+
+  describe("notifications", () => {
+    /** Task assigned to teacher1 by branchManager (bm1), in the given status. */
+    function assignedTask(status = "TODO") {
+      prisma.task.findUnique.mockResolvedValue({
+        id: "t1",
+        branchId,
+        leadId: null,
+        familyId: null,
+        description: "Проверить группу",
+        assignedToId: "teacher1",
+        createdById: "bm1",
+        status,
+        completedAt: null,
+        reportFileKey: null,
+        reportFileName: null,
+        reportMimeType: null,
+        reportUploadedAt: null,
+      });
+    }
+
+    it("notifies the assignee when a task is created for them", async () => {
+      await service.create(branchManager, branchId, {
+        description: "Проверить группу",
+        dueAt: "2026-09-01",
+        assignedToId: "teacher1",
+      } as any);
+
+      expect(notifications.create).toHaveBeenCalledWith(
+        "teacher1",
+        "TASK_ASSIGNED",
+        expect.stringContaining("Проверить группу"),
+      );
+    });
+
+    it("records who assigned the task, so the completion can be reported back", async () => {
+      await service.create(branchManager, branchId, {
+        description: "Проверить группу",
+        dueAt: "2026-09-01",
+        assignedToId: "teacher1",
+      } as any);
+
+      expect(prisma.task.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ createdById: "bm1" }) }),
+      );
+    });
+
+    it("does not notify anyone when a manager assigns a task to themselves", async () => {
+      await service.create(branchManager, branchId, {
+        description: "Своя задача",
+        dueAt: "2026-09-01",
+        assignedToId: "bm1",
+      } as any);
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it("notifies the assigner when the assignee marks the task DONE", async () => {
+      assignedTask("IN_PROGRESS");
+
+      await service.updateStatus(teacher, branchId, "t1", "DONE");
+
+      expect(notifications.create).toHaveBeenCalledWith(
+        "bm1",
+        "TASK_COMPLETED",
+        expect.stringContaining("Проверить группу"),
+      );
+    });
+
+    it("does not re-notify when an already-DONE task is moved to DONE again", async () => {
+      assignedTask("DONE");
+
+      await service.updateStatus(teacher, branchId, "t1", "DONE");
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it("does not notify on intermediate status moves", async () => {
+      assignedTask("TODO");
+
+      await service.updateStatus(teacher, branchId, "t1", "IN_PROGRESS");
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it("does not notify the assigner when they complete the task themselves", async () => {
+      assignedTask("TODO");
+
+      await service.updateStatus(branchManager, branchId, "t1", "DONE");
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it("stays silent for legacy tasks that predate createdById", async () => {
+      prisma.task.findUnique.mockResolvedValue({
+        id: "t1",
+        branchId,
+        leadId: null,
+        familyId: null,
+        description: "Старая задача",
+        assignedToId: "teacher1",
+        createdById: null,
+        status: "TODO",
+        completedAt: null,
+      });
+
+      await service.updateStatus(teacher, branchId, "t1", "DONE");
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it("notifies the assigner when the assignee attaches a report", async () => {
+      assignedTask("IN_PROGRESS");
+
+      await service.attachReport(teacher, branchId, "t1", {
+        buffer: Buffer.from("x"),
+        mimetype: "image/jpeg",
+        originalname: "отчёт.jpg",
+      });
+
+      expect(notifications.create).toHaveBeenCalledWith(
+        "bm1",
+        "TASK_REPORT_SUBMITTED",
+        expect.stringContaining("Проверить группу"),
+      );
     });
   });
 

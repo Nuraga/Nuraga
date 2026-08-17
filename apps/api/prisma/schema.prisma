@@ -770,6 +770,12 @@ model AuditLog {
 
 enum NotificationType {
   STAFF_LATE_CHECK_IN
+  // Task lifecycle (ТЗ §8 M6 kanban): the assignee is told when work lands on
+  // them, the person who assigned it is told when it comes back done or with
+  // a report attached — so neither side has to poll the board.
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  TASK_REPORT_SUBMITTED
 }
 
 // In-app only (bell icon in AppLayout) — no email/SMS/push infra in this
@@ -1171,6 +1177,11 @@ model Task {
   description  String
   dueAt        DateTime
   assignedToId String
+  // Who assigned the task — the recipient of TASK_COMPLETED /
+  // TASK_REPORT_SUBMITTED notifications. Nullable: tasks created before
+  // notifications existed have no creator on record, and those simply don't
+  // notify anyone back (see TasksService).
+  createdById  String?
   status       TaskStatus @default(TODO)
   completedAt  DateTime?
   createdAt    DateTime   @default(now())

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import type { Role, Task, TaskStatus } from "@prisma/client";
+import type { NotificationType, Role, Task, TaskStatus } from "@prisma/client";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { BranchScopeService } from "../../common/access/branch-scope.service";
 import { AuditService } from "../../common/audit/audit.service";
 import { FileUrlService } from "../../common/storage/file-url.service";
 import { OBJECT_STORAGE, type ObjectStorage } from "../../common/storage/object-storage.interface";
+import { NotificationsService } from "../../notifications/notifications.service";
 import type { AuthenticatedUser } from "../../common/access/branch-access.types";
 import { CreateTaskDto } from "./dto/create-task.dto";
 
@@ -47,6 +48,7 @@ export class TasksService {
     private readonly audit: AuditService,
     private readonly fileUrls: FileUrlService,
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(user: AuthenticatedUser, branchId: string, filters: TaskFilters): Promise<TaskView[]> {
@@ -92,6 +94,7 @@ export class TasksService {
         description: dto.description,
         dueAt: new Date(dto.dueAt),
         assignedToId: dto.assignedToId,
+        createdById: user.id,
       },
     });
     await this.audit.record({
@@ -101,6 +104,9 @@ export class TasksService {
       newValue: task,
       actorId: user.id,
     });
+
+    await this.notifyAssignee(task);
+
     return this.toView(task);
   }
 
@@ -124,6 +130,18 @@ export class TasksService {
       newValue: { status },
       actorId: user.id,
     });
+
+    // Only on the TODO/IN_PROGRESS -> DONE edge: dragging an already-DONE
+    // card around the board must not re-notify.
+    if (status === "DONE" && existing.status !== "DONE") {
+      await this.notifyCreator(
+        existing,
+        user,
+        "TASK_COMPLETED",
+        `${user.fullName} выполнил(а) задачу: ${existing.description}`,
+      );
+    }
+
     return this.toView(task);
   }
 
@@ -167,6 +185,13 @@ export class TasksService {
       actorId: user.id,
     });
 
+    await this.notifyCreator(
+      existing,
+      user,
+      "TASK_REPORT_SUBMITTED",
+      `${user.fullName} прикрепил(а) отчёт к задаче: ${existing.description}`,
+    );
+
     return this.toView(task);
   }
 
@@ -193,6 +218,34 @@ export class TasksService {
     });
 
     return this.toView(task);
+  }
+
+  /** Tells the assignee work has landed on them. Skipped when someone assigns a task to themselves. */
+  private async notifyAssignee(task: Task): Promise<void> {
+    if (task.assignedToId === task.createdById) return;
+
+    const due = task.dueAt.toLocaleDateString("ru-RU");
+    await this.notifications.create(
+      task.assignedToId,
+      "TASK_ASSIGNED",
+      `Вам назначена задача: ${task.description} (срок: ${due})`,
+    );
+  }
+
+  /**
+   * Reports back to whoever assigned the task. No-op for tasks created
+   * before createdById existed, and when the actor *is* the creator (a
+   * manager closing out their own task shouldn't notify themselves).
+   */
+  private async notifyCreator(
+    task: Task,
+    actor: AuthenticatedUser,
+    type: NotificationType,
+    message: string,
+  ): Promise<void> {
+    if (!task.createdById || task.createdById === actor.id) return;
+
+    await this.notifications.create(task.createdById, type, message);
   }
 
   private assertCanActOnTask(user: AuthenticatedUser, branchId: string, task: Task): void {
