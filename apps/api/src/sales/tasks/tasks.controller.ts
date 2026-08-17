@@ -1,10 +1,26 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
 import { TasksService } from "./tasks.service";
 import { CreateTaskDto } from "./dto/create-task.dto";
 import { UpdateTaskStatusDto } from "./dto/update-task-status.dto";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../common/access/current-user.decorator";
 import type { AuthenticatedUser } from "../../common/access/branch-access.types";
+
+const MAX_REPORT_UPLOAD_BYTES = 15 * 1024 * 1024;
 
 @UseGuards(JwtAuthGuard)
 @Controller("branches/:branchId/tasks")
@@ -56,5 +72,30 @@ export class TasksController {
     @Body() dto: UpdateTaskStatusDto,
   ) {
     return this.tasks.updateStatus(user, branchId, id, dto.status);
+  }
+
+  @Post(":id/report")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_REPORT_UPLOAD_BYTES },
+    }),
+  )
+  attachReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("id") id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.tasks.attachReport(user, branchId, id, file);
+  }
+
+  @Delete(":id/report")
+  removeReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("id") id: string,
+  ) {
+    return this.tasks.removeReport(user, branchId, id);
   }
 }

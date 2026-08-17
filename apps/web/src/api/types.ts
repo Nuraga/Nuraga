@@ -898,6 +898,10 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Proof-of-work photo/document the assignee submits — auto-deleted 30 days after upload. */
+  reportFileName: string | null;
+  reportUploadedAt: string | null;
+  reportDownloadUrl: string | null;
 }
 
 /** Persisted kanban column — drives the staff tasks board. */

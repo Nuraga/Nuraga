@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 import { APP_GUARD } from "@nestjs/core";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { AccessModule } from "./common/access/access.module";
@@ -40,6 +41,9 @@ import { NotificationsModule } from "./notifications/notifications.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Powers TaskReportCleanupService's daily @Cron (sales/tasks) — no other
+    // scheduled jobs exist yet, this is the only reason it's here.
+    ScheduleModule.forRoot(),
     PrismaModule,
     AccessModule,
     AuditModule,

@@ -25,6 +25,8 @@ describe("TasksService", () => {
 
   let prisma: any;
   let audit: { record: jest.Mock };
+  let fileUrls: { sign: jest.Mock };
+  let storage: { save: jest.Mock; delete: jest.Mock };
   let branchScope: BranchScopeService;
   let service: TasksService;
 
@@ -43,6 +45,10 @@ describe("TasksService", () => {
             assignedToId: "teacher1",
             status: "TODO",
             completedAt: null,
+            reportFileKey: null,
+            reportFileName: null,
+            reportMimeType: null,
+            reportUploadedAt: null,
           }),
         ),
       },
@@ -50,8 +56,10 @@ describe("TasksService", () => {
       family: { findUnique: jest.fn(() => Promise.resolve({ id: "fam1", branchId })) },
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
+    fileUrls = { sign: jest.fn(() => Promise.resolve("signed-token")) };
+    storage = { save: jest.fn(() => Promise.resolve()), delete: jest.fn(() => Promise.resolve()) };
     branchScope = new BranchScopeService();
-    service = new TasksService(prisma, branchScope, audit as any);
+    service = new TasksService(prisma, branchScope, audit as any, fileUrls as any, storage as any);
   });
 
   describe("create", () => {
@@ -215,6 +223,90 @@ describe("TasksService", () => {
       });
       const task = await service.updateStatus(branchManager, branchId, "t1", "IN_PROGRESS");
       expect(task.status).toBe("IN_PROGRESS");
+    });
+  });
+
+  describe("attachReport", () => {
+    const file = { buffer: Buffer.from("x"), mimetype: "image/jpeg", originalname: "отчёт.jpg" };
+
+    it("rejects a staff member who isn't the assignee and has no management role", async () => {
+      await expect(service.attachReport(otherTeacher, branchId, "t1", file)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("lets the assignee attach a report and returns a signed download URL", async () => {
+      const task = await service.attachReport(teacher, branchId, "t1", file);
+
+      expect(storage.save).toHaveBeenCalledWith(
+        expect.stringContaining(`task-reports/${branchId}/t1/`),
+        file.buffer,
+        "image/jpeg",
+      );
+      expect(prisma.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ reportFileName: "отчёт.jpg", reportUploadedAt: expect.any(Date) }),
+        }),
+      );
+      expect(task.reportDownloadUrl).toBe("/api/files/signed-token");
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ newValue: { event: "report_attached", fileName: "отчёт.jpg" } }),
+      );
+    });
+
+    it("deletes the previous file when replacing an existing report", async () => {
+      prisma.task.findUnique.mockResolvedValue({
+        id: "t1",
+        branchId,
+        leadId: "lead1",
+        familyId: null,
+        assignedToId: "teacher1",
+        status: "TODO",
+        completedAt: null,
+        reportFileKey: "task-reports/old-key",
+        reportFileName: "old.pdf",
+        reportMimeType: "application/pdf",
+        reportUploadedAt: new Date("2026-08-01"),
+      });
+
+      await service.attachReport(teacher, branchId, "t1", file);
+
+      expect(storage.delete).toHaveBeenCalledWith("task-reports/old-key");
+    });
+  });
+
+  describe("removeReport", () => {
+    it("rejects a staff member who isn't the assignee and has no management role", async () => {
+      await expect(service.removeReport(otherTeacher, branchId, "t1")).rejects.toThrow(ForbiddenException);
+    });
+
+    it("is a no-op when there is no report attached", async () => {
+      const task = await service.removeReport(teacher, branchId, "t1");
+      expect(storage.delete).not.toHaveBeenCalled();
+      expect(task.reportDownloadUrl).toBeNull();
+    });
+
+    it("deletes the file and clears the report fields", async () => {
+      prisma.task.findUnique.mockResolvedValue({
+        id: "t1",
+        branchId,
+        leadId: "lead1",
+        familyId: null,
+        assignedToId: "teacher1",
+        status: "TODO",
+        completedAt: null,
+        reportFileKey: "task-reports/key1",
+        reportFileName: "report.jpg",
+        reportMimeType: "image/jpeg",
+        reportUploadedAt: new Date("2026-08-01"),
+      });
+
+      await service.removeReport(teacher, branchId, "t1");
+
+      expect(storage.delete).toHaveBeenCalledWith("task-reports/key1");
+      expect(prisma.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { reportFileKey: null, reportFileName: null, reportMimeType: null, reportUploadedAt: null },
+        }),
+      );
     });
   });
 });

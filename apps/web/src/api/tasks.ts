@@ -25,4 +25,7 @@ export const tasksApi = {
   complete: (branchId: string, id: string) => api.post<Task>(`/branches/${branchId}/tasks/${id}/complete`),
   updateStatus: (branchId: string, id: string, status: TaskBoardStatus) =>
     api.patch<Task>(`/branches/${branchId}/tasks/${id}/status`, { status }),
+  attachReport: (branchId: string, id: string, file: File) =>
+    api.upload<Task>(`/branches/${branchId}/tasks/${id}/report`, file),
+  removeReport: (branchId: string, id: string) => api.delete<Task>(`/branches/${branchId}/tasks/${id}/report`),
 };

@@ -1176,6 +1176,15 @@ model Task {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  // Proof-of-work attachment (photo/document) the assignee submits when the
+  // task is done. Auto-deleted REPORT_RETENTION_DAYS after upload by
+  // TaskReportCleanupService's daily cron — not kept indefinitely, so
+  // reportUploadedAt doubles as the retention clock.
+  reportFileKey    String?
+  reportFileName   String?
+  reportMimeType   String?
+  reportUploadedAt DateTime?
+
   branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   family Family? @relation(fields: [familyId], references: [id], onDelete: Cascade)
