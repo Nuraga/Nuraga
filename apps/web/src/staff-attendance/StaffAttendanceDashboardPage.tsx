@@ -124,7 +124,20 @@ export default function StaffAttendanceDashboardPage() {
                   </Space>
                 ),
               },
-              { title: "Источник", dataIndex: "source", render: (s: string) => (s === "QR" ? "QR" : "Вручную") },
+              {
+                title: "Источник",
+                dataIndex: "source",
+                // AUTO_CLOSE must never read as "Вручную" — the whole point of
+                // the separate source is that nobody actually made this call.
+                render: (s: string) =>
+                  s === "QR" ? (
+                    "QR"
+                  ) : s === "AUTO_CLOSE" ? (
+                    <Tag color="default">Авто (не отметился)</Tag>
+                  ) : (
+                    "Вручную"
+                  ),
+              },
               { title: "Причина правки", dataIndex: "correctionReason", render: (r: string | null) => r ?? "—" },
             ]}
           />

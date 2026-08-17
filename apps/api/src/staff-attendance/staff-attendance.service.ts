@@ -20,9 +20,12 @@ export const DEFAULT_CHECK_OUT_TIME = "18:00";
 // todayRangeUTC() below has the same pre-existing UTC-only "today" boundary
 // for the same reason — if the network ever spans multiple timezones, both
 // are where to add per-branch Branch.timezone-aware conversion.
-const LOCAL_UTC_OFFSET_MINUTES = 5 * 60;
+// Exported so StaffAttendanceAutoCloseService converts against exactly the
+// same offset — two copies of this constant drifting apart would silently
+// shift the auto-close window off the intended 23:00 local.
+export const LOCAL_UTC_OFFSET_MINUTES = 5 * 60;
 
-function toLocalHHMM(utc: Date): string {
+export function toLocalHHMM(utc: Date): string {
   const local = new Date(utc.getTime() + LOCAL_UTC_OFFSET_MINUTES * 60_000);
   return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
 }

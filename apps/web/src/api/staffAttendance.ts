@@ -6,7 +6,7 @@ export interface CheckinToken {
 }
 
 export type StaffAttendanceEventType = "CHECK_IN" | "CHECK_OUT";
-export type StaffAttendanceEventSource = "QR" | "MANUAL_CORRECTION";
+export type StaffAttendanceEventSource = "QR" | "MANUAL_CORRECTION" | "AUTO_CLOSE";
 
 export interface StaffAttendanceEvent {
   id: string;

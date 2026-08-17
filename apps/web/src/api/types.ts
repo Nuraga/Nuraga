@@ -93,7 +93,8 @@ export type NotificationType =
   | "STAFF_LATE_CHECK_IN"
   | "TASK_ASSIGNED"
   | "TASK_COMPLETED"
-  | "TASK_REPORT_SUBMITTED";
+  | "TASK_REPORT_SUBMITTED"
+  | "STAFF_SHIFT_AUTO_CLOSED";
 
 export interface AppNotification {
   id: string;

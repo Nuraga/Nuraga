@@ -699,6 +699,10 @@ enum StaffAttendanceEventType {
 enum StaffAttendanceEventSource {
   QR
   MANUAL_CORRECTION
+  // Written by StaffAttendanceAutoCloseService when someone forgot to scan
+  // out — kept distinct from MANUAL_CORRECTION so a manager can always tell
+  // a real human decision from the system's assumption.
+  AUTO_CLOSE
 }
 
 // Append-only log of raw scan events (not a single upserted per-day row like
@@ -776,6 +780,9 @@ enum NotificationType {
   TASK_ASSIGNED
   TASK_COMPLETED
   TASK_REPORT_SUBMITTED
+  // The system closed a shift the staff member forgot to scan out of — they
+  // need to know, since it's their attendance record that was altered.
+  STAFF_SHIFT_AUTO_CLOSED
 }
 
 // In-app only (bell icon in AppLayout) — no email/SMS/push infra in this
