@@ -7,6 +7,7 @@ import { AccessModule } from "./common/access/access.module";
 import { AuditModule } from "./common/audit/audit.module";
 import { CryptoModule } from "./common/crypto/crypto.module";
 import { StorageModule } from "./common/storage/storage.module";
+import { TelegramModule } from "./common/telegram/telegram.module";
 import { ExportModule } from "./common/export/export.module";
 import { RolesGuard } from "./common/access/roles.guard";
 import { HealthModule } from "./health/health.module";
@@ -49,6 +50,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     AuditModule,
     CryptoModule,
     StorageModule,
+    TelegramModule,
     ExportModule,
     HealthModule,
     AuthModule,

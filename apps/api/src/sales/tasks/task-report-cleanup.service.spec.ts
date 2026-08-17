@@ -8,7 +8,8 @@ function daysAgo(days: number): Date {
 describe("TaskReportCleanupService", () => {
   let prisma: any;
   let audit: { record: jest.Mock };
-  let storage: { delete: jest.Mock };
+  let storage: { delete: jest.Mock; read: jest.Mock };
+  let telegram: { archiveFile: jest.Mock };
   let service: TaskReportCleanupService;
 
   beforeEach(() => {
@@ -19,8 +20,12 @@ describe("TaskReportCleanupService", () => {
       },
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
-    storage = { delete: jest.fn(() => Promise.resolve()) };
-    service = new TaskReportCleanupService(prisma, audit as any, storage as any);
+    storage = {
+      delete: jest.fn(() => Promise.resolve()),
+      read: jest.fn(() => Promise.resolve(Buffer.from("file bytes"))),
+    };
+    telegram = { archiveFile: jest.fn(() => Promise.resolve(true)) };
+    service = new TaskReportCleanupService(prisma, audit as any, storage as any, telegram as any);
   });
 
   it("queries only tasks with a report older than the retention window", async () => {
@@ -33,15 +38,19 @@ describe("TaskReportCleanupService", () => {
     );
   });
 
-  it("deletes the file and clears report fields for each expired task", async () => {
+  it("archives the file to Telegram before deleting it, then deletes and clears report fields", async () => {
     prisma.task.findMany.mockResolvedValue([
-      { id: "t1", reportFileKey: "task-reports/k1", reportFileName: "a.jpg" },
-      { id: "t2", reportFileKey: "task-reports/k2", reportFileName: "b.pdf" },
+      { id: "t1", reportFileKey: "task-reports/k1", reportFileName: "a.jpg", reportMimeType: "image/jpeg" },
+      { id: "t2", reportFileKey: "task-reports/k2", reportFileName: "b.pdf", reportMimeType: "application/pdf" },
     ]);
 
     const count = await service.cleanupExpiredReports();
 
     expect(count).toBe(2);
+    expect(storage.read).toHaveBeenCalledWith("task-reports/k1");
+    expect(telegram.archiveFile).toHaveBeenCalledWith(
+      expect.objectContaining({ fileName: "a.jpg", mimeType: "image/jpeg" }),
+    );
     expect(storage.delete).toHaveBeenCalledWith("task-reports/k1");
     expect(storage.delete).toHaveBeenCalledWith("task-reports/k2");
     expect(prisma.task.update).toHaveBeenCalledWith({
@@ -49,7 +58,27 @@ describe("TaskReportCleanupService", () => {
       data: { reportFileKey: null, reportFileName: null, reportMimeType: null, reportUploadedAt: null },
     });
     expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({ entityId: "t1", newValue: { event: "report_expired", fileName: "a.jpg" } }),
+      expect.objectContaining({
+        entityId: "t1",
+        newValue: { event: "report_expired", fileName: "a.jpg", archivedToTelegram: true },
+      }),
+    );
+  });
+
+  it("still deletes the file and clears the DB pointer even if Telegram archiving fails", async () => {
+    prisma.task.findMany.mockResolvedValue([
+      { id: "t1", reportFileKey: "task-reports/k1", reportFileName: "a.jpg", reportMimeType: "image/jpeg" },
+    ]);
+    telegram.archiveFile.mockRejectedValue(new Error("network down"));
+
+    const count = await service.cleanupExpiredReports();
+
+    expect(count).toBe(1);
+    expect(storage.delete).toHaveBeenCalledWith("task-reports/k1");
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({ archivedToTelegram: false }),
+      }),
     );
   });
 
