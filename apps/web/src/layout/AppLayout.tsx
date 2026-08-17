@@ -76,10 +76,16 @@ const NAV_ITEMS: NavItem[] = [
     key: "/tasks",
     label: "Задачи",
     icon: <CheckSquareOutlined />,
-    // NANNY sees her own assigned tasks (StaffTasksPage falls back to
-    // "мои задачи" for any non-management role); METHODIST assigns tasks
-    // to TEACHER/NANNY like a manager (STAFF_TASK_ROLES in tasks.service.ts).
-    roles: ["OWNER", "BRANCH_MANAGER", "TEACHER", "NANNY", "METHODIST"],
+    // TEACHER/NANNY/MANAGER see their own assigned tasks (StaffTasksPage
+    // falls back to "мои задачи" for any role outside TASK_MANAGEMENT_ROLES
+    // — the backend's own list() already lets anyone read tasks assigned
+    // to themselves regardless of role, this nav entry was just the one
+    // place still gating it). METHODIST assigns tasks to TEACHER/NANNY
+    // like a manager (STAFF_TASK_ROLES in tasks.service.ts); MANAGER can
+    // receive general assignments from a заведующий but doesn't manage
+    // the staff-task kanban itself (still SALES_TASK_ROLES-only for
+    // lead/family tasks, see TASK_MANAGEMENT_ROLES in StaffTasksPage).
+    roles: ["OWNER", "BRANCH_MANAGER", "TEACHER", "NANNY", "METHODIST", "MANAGER"],
   },
   { key: "/my-qr", label: "Мой QR", icon: <QrcodeOutlined /> },
   {
