@@ -281,5 +281,32 @@ describe("StaffAttendanceService", () => {
       expect(event).toMatchObject({ source: "MANUAL_CORRECTION", correctionReason: "забыл отметиться" });
       expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ entity: "staff_attendance_event" }));
     });
+
+    it("stores the typed wall-clock time as Almaty, not as the server's UTC", async () => {
+      // The form's <input type="datetime-local"> submits no timezone; 08:30
+      // means 08:30 in the kindergarten, i.e. 03:30 UTC. Storing 08:30 UTC
+      // would show the arrival back as 13:30.
+      await service.correctEvent(owner, branchId, {
+        staffId: "s1",
+        type: "CHECK_IN",
+        occurredAt: "2026-08-03T08:30",
+        reason: "забыла отметиться",
+      });
+
+      const { data } = prisma.staffAttendanceEvent.create.mock.calls.at(-1)![0];
+      expect(data.occurredAt.toISOString()).toBe("2026-08-03T03:30:00.000Z");
+    });
+
+    it("still respects a timestamp that already carries a timezone", async () => {
+      await service.correctEvent(owner, branchId, {
+        staffId: "s1",
+        type: "CHECK_IN",
+        occurredAt: "2026-08-03T08:00:00Z",
+        reason: "забыла отметиться",
+      });
+
+      const { data } = prisma.staffAttendanceEvent.create.mock.calls.at(-1)![0];
+      expect(data.occurredAt.toISOString()).toBe("2026-08-03T08:00:00.000Z");
+    });
   });
 });

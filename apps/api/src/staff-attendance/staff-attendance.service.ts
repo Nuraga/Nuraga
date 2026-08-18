@@ -9,6 +9,7 @@ import type { AuthenticatedUser } from "../common/access/branch-access.types";
 import type { AuthenticatedDevice } from "../devices/device.types";
 import { CorrectStaffAttendanceDto } from "./dto/correct-staff-attendance.dto";
 import { ExpectedScheduleService, resolveExpected } from "./expected-schedule.service";
+import { LOCAL_UTC_OFFSET_MINUTES, parseLocalDateTime } from "../common/time/local-time";
 
 // Individual per-staff override lives on Staff.expectedCheckInTime/
 // expectedCheckOutTime (null = these network-wide defaults).
@@ -21,10 +22,9 @@ export const DEFAULT_CHECK_OUT_TIME = "18:00";
 // todayRangeUTC() below has the same pre-existing UTC-only "today" boundary
 // for the same reason — if the network ever spans multiple timezones, both
 // are where to add per-branch Branch.timezone-aware conversion.
-// Exported so StaffAttendanceAutoCloseService converts against exactly the
-// same offset — two copies of this constant drifting apart would silently
-// shift the auto-close window off the intended 23:00 local.
-export const LOCAL_UTC_OFFSET_MINUTES = 5 * 60;
+// Re-exported (not redefined) so the existing importers in this folder keep
+// working while common/time stays the single definition.
+export { LOCAL_UTC_OFFSET_MINUTES };
 
 export function toLocalHHMM(utc: Date): string {
   const local = new Date(utc.getTime() + LOCAL_UTC_OFFSET_MINUTES * 60_000);
@@ -275,7 +275,9 @@ export class StaffAttendanceService {
         branchId,
         type: dto.type,
         source: "MANUAL_CORRECTION",
-        occurredAt: new Date(dto.occurredAt),
+        // The form submits a naive wall-clock string — must be read as
+        // Almaty time, not as the UTC container's local time.
+        occurredAt: parseLocalDateTime(dto.occurredAt),
         correctionReason: dto.reason,
         correctionById: user.id,
       },

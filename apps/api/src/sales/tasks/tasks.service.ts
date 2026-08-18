@@ -7,6 +7,7 @@ import { AuditService } from "../../common/audit/audit.service";
 import { FileUrlService } from "../../common/storage/file-url.service";
 import { OBJECT_STORAGE, type ObjectStorage } from "../../common/storage/object-storage.interface";
 import { NotificationsService } from "../../notifications/notifications.service";
+import { parseLocalDateTime } from "../../common/time/local-time";
 import type { AuthenticatedUser } from "../../common/access/branch-access.types";
 import { CreateTaskDto } from "./dto/create-task.dto";
 
@@ -99,7 +100,8 @@ export class TasksService {
         leadId: dto.leadId,
         familyId: dto.familyId,
         description: dto.description,
-        dueAt: new Date(dto.dueAt),
+        // Same naive-wall-clock input as the attendance correction form.
+        dueAt: parseLocalDateTime(dto.dueAt),
         assignedToId: dto.assignedToId,
         createdById: user.id,
       },
