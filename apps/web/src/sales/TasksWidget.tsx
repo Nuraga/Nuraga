@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Checkbox, Form, Input, List, Select, Space, Tag, Typography } from "antd";
+import { App, Button, Checkbox, DatePicker, Form, Input, List, Select, Space, Tag, Typography } from "antd";
+import type { Dayjs } from "dayjs";
 import { PlusOutlined } from "@ant-design/icons";
 import { tasksApi } from "../api/tasks";
 import { staffApi } from "../api/staff";
@@ -92,7 +93,9 @@ export default function TasksWidget({ branchId, leadId, familyId }: Props) {
           form={form}
           layout="vertical"
           style={{ marginTop: 12 }}
-          onFinish={(values) => create.mutate(values)}
+          onFinish={(values: { description: string; dueAt: Dayjs; assignedToId: string }) =>
+            create.mutate({ ...values, dueAt: values.dueAt.format("YYYY-MM-DDTHH:mm") })
+          }
         >
           <Form.Item
             label="Описание"
@@ -102,7 +105,14 @@ export default function TasksWidget({ branchId, leadId, familyId }: Props) {
             <Input />
           </Form.Item>
           <Form.Item label="Срок" name="dueAt" rules={[{ required: true, message: "Укажите срок" }]}>
-            <Input type="datetime-local" />
+            {/* 24-hour picker — see the note in CreateStaffTaskModal. */}
+            <DatePicker
+              showTime={{ format: "HH:mm" }}
+              format="DD.MM.YYYY HH:mm"
+              minuteStep={1}
+              style={{ width: "100%" }}
+              placeholder="Выберите дату и время"
+            />
           </Form.Item>
           <Form.Item
             label="Исполнитель"

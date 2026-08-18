@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { App, Form, Input, Modal, Select } from "antd";
+import { App, DatePicker, Form, Input, Modal, Select } from "antd";
+import type { Dayjs } from "dayjs";
 import { tasksApi, type CreateTaskInput } from "../api/tasks";
 import { ApiError } from "../api/client";
 
@@ -39,7 +40,13 @@ export default function CreateStaffTaskModal({ branchId, open, onClose, staffOpt
       confirmLoading={create.isPending}
       destroyOnClose
     >
-      <Form form={form} layout="vertical" onFinish={(values) => create.mutate(values)}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values: Omit<CreateTaskInput, "dueAt"> & { dueAt: Dayjs }) =>
+          create.mutate({ ...values, dueAt: values.dueAt.format("YYYY-MM-DDTHH:mm") })
+        }
+      >
         <Form.Item
           label="Описание"
           name="description"
@@ -48,7 +55,16 @@ export default function CreateStaffTaskModal({ branchId, open, onClose, staffOpt
           <Input.TextArea rows={2} />
         </Form.Item>
         <Form.Item label="Срок" name="dueAt" rules={[{ required: true, message: "Укажите срок" }]}>
-          <Input type="datetime-local" />
+          {/* 24-hour picker rather than <input type="datetime-local">, whose
+              AM/PM rendering on an en-US browser silently turns a morning
+              time into an evening one. */}
+          <DatePicker
+            showTime={{ format: "HH:mm" }}
+            format="DD.MM.YYYY HH:mm"
+            minuteStep={1}
+            style={{ width: "100%" }}
+            placeholder="Выберите дату и время"
+          />
         </Form.Item>
         <Form.Item
           label="Исполнитель"

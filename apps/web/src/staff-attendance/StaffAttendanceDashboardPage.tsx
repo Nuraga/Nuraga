@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Form, Input, List, Modal, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Card, DatePicker, Form, Input, List, Modal, Select, Space, Table, Tag, Typography } from "antd";
+import type { Dayjs } from "dayjs";
 import { staffAttendanceApi, type CorrectStaffAttendanceInput } from "../api/staffAttendance";
 import { staffApi } from "../api/staff";
 import { ApiError } from "../api/client";
@@ -156,7 +157,11 @@ export default function StaffAttendanceDashboardPage() {
           form={correctForm}
           layout="vertical"
           initialValues={{ staffId: selectedStaffId }}
-          onFinish={(v: CorrectStaffAttendanceInput) => correct.mutate(v)}
+          onFinish={(v: Omit<CorrectStaffAttendanceInput, "occurredAt"> & { occurredAt: Dayjs }) =>
+            // Send the wall clock the manager sees; the API reads a zoneless
+            // value as Almaty time (parseLocalDateTime), so no conversion here.
+            correct.mutate({ ...v, occurredAt: v.occurredAt.format("YYYY-MM-DDTHH:mm") })
+          }
         >
           <Form.Item label="Сотрудник" name="staffId" rules={[{ required: true, message: "Выберите сотрудника" }]}>
             <Select options={staffOptions} showSearch optionFilterProp="label" />
@@ -170,7 +175,18 @@ export default function StaffAttendanceDashboardPage() {
             />
           </Form.Item>
           <Form.Item label="Время" name="occurredAt" rules={[{ required: true, message: "Укажите время" }]}>
-            <Input type="datetime-local" />
+            {/* Not <input type="datetime-local">: that widget renders in the
+                browser's locale, so on an en-US browser it shows a 12-hour
+                clock with AM/PM and quietly submits 19:22 for a "7:22" the
+                manager meant as morning — which is exactly how a wrong
+                arrival time reached the DB. antd's picker is 24-hour. */}
+            <DatePicker
+              showTime={{ format: "HH:mm" }}
+              format="DD.MM.YYYY HH:mm"
+              minuteStep={1}
+              style={{ width: "100%" }}
+              placeholder="Выберите дату и время"
+            />
           </Form.Item>
           <Form.Item label="Причина" name="reason" rules={[{ required: true, message: "Укажите причину" }]}>
             <Input.TextArea rows={2} />
