@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Form, Input, Modal, Space, Table, Typography } from "antd";
+import { App, Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tag, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { familiesApi } from "../api/families";
@@ -16,9 +16,10 @@ export default function FamiliesPage() {
   const branchId = selectedBranchId!;
 
   const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const { data: families = [], isLoading } = useQuery({
-    queryKey: ["families", branchId, search],
-    queryFn: () => familiesApi.list(branchId, search || undefined),
+    queryKey: ["families", branchId, search, showArchived],
+    queryFn: () => familiesApi.list(branchId, search || undefined, showArchived),
     enabled: Boolean(branchId),
   });
 
@@ -35,6 +36,26 @@ export default function FamiliesPage() {
     onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
   });
 
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["families", branchId] });
+
+  const archiveMutation = useMutation({
+    mutationFn: (id: string) => familiesApi.archive(branchId, id),
+    onSuccess: () => {
+      void invalidate();
+      message.success("Семья архивирована");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => familiesApi.restore(branchId, id),
+    onSuccess: () => {
+      void invalidate();
+      message.success("Семья восстановлена");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
   return (
     <>
       <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
@@ -42,6 +63,10 @@ export default function FamiliesPage() {
           Семьи
         </Typography.Title>
         <Space>
+          <Space size="small">
+            <Switch checked={showArchived} onChange={setShowArchived} />
+            <Typography.Text type="secondary">Архивные</Typography.Text>
+          </Space>
           <Input.Search
             placeholder="Поиск по имени или телефону"
             allowClear
@@ -60,7 +85,16 @@ export default function FamiliesPage() {
         dataSource={families}
         onRow={(family) => ({ onClick: () => navigate(`/families/${family.id}`), style: { cursor: "pointer" } })}
         columns={[
-          { title: "Название", dataIndex: "name" },
+          {
+            title: "Название",
+            dataIndex: "name",
+            render: (name: string, family: Family) => (
+              <Space>
+                {name}
+                {family.archivedAt && <Tag>Архив</Tag>}
+              </Space>
+            ),
+          },
           {
             title: "Родители",
             key: "parents",
@@ -70,6 +104,39 @@ export default function FamiliesPage() {
             title: "Дети",
             key: "children",
             render: (_, family: Family) => (family.children ?? []).map((c) => c.fullName).join(", "),
+          },
+          {
+            title: "",
+            key: "actions",
+            render: (_, family: Family) =>
+              family.archivedAt ? (
+                <Button
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    restoreMutation.mutate(family.id);
+                  }}
+                >
+                  Восстановить
+                </Button>
+              ) : (
+                <Popconfirm
+                  title="Архивировать семью?"
+                  // Popconfirm renders its "Да"/"Нет" buttons into a portal,
+                  // but a portal still bubbles through the React tree (not
+                  // the DOM tree) — without stopPropagation the click would
+                  // reach onRow's onClick and navigate into the family.
+                  onConfirm={(e) => {
+                    e?.stopPropagation();
+                    archiveMutation.mutate(family.id);
+                  }}
+                  onCancel={(e) => e?.stopPropagation()}
+                >
+                  <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                    В архив
+                  </Button>
+                </Popconfirm>
+              ),
           },
         ]}
       />

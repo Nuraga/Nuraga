@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { AuditService } from "../common/audit/audit.service";
@@ -14,9 +20,19 @@ import { CreateParentAccountDto } from "./dto/create-parent-account.dto";
 
 // Family list/detail is a branch-office operation, not a teacher one — a
 // teacher works through Children (own group), never by browsing families
-// (TRD 2.2 has no "browse all families" grant for Воспитатель).
-const FAMILY_READ_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT"] as const;
-const FAMILY_WRITE_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER"] as const;
+// (TRD 2.2 has no "browse all families" grant for Воспитатель). METHODIST
+// was added here on explicit owner request (2026-08-25, not in TRD 2.2/16.3)
+// so a методист can register new families/parents at intake, same bracket
+// as MANAGER — read + create/edit, no delete.
+const FAMILY_READ_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "METHODIST"] as const;
+const FAMILY_WRITE_ROLES = ["OWNER", "BRANCH_MANAGER", "MANAGER", "METHODIST"] as const;
+// Archiving (soft delete) a family that already has children, contracts,
+// invoices or payments attached is a bigger call than plain data entry —
+// same distinction the TRD matrix draws between MANAGER's ПСР and
+// OWNER/BRANCH_MANAGER's У. A METHODIST (and MANAGER) can only archive an
+// empty family (e.g. one created by mistake); restoring is always
+// OWNER/BRANCH_MANAGER, same as the force-archive path.
+const FAMILY_ARCHIVE_FORCE_ROLES = ["OWNER", "BRANCH_MANAGER"] as const;
 
 @Injectable()
 export class FamiliesService {
@@ -41,12 +57,20 @@ export class FamiliesService {
     return family;
   }
 
-  async findAllForBranch(user: AuthenticatedUser, branchId: string, search?: string) {
+  async findAllForBranch(
+    user: AuthenticatedUser,
+    branchId: string,
+    search?: string,
+    archived?: boolean,
+  ) {
     this.branchScope.assertRoleInBranch(user, [...FAMILY_READ_ROLES], branchId);
 
     return this.prisma.family.findMany({
       where: {
         branchId,
+        // Default view is "active only" — archived families stay out of
+        // the way of everyday search/list unless explicitly requested.
+        archivedAt: archived ? { not: null } : null,
         ...(search
           ? {
               OR: [
@@ -90,6 +114,66 @@ export class FamiliesService {
     return family;
   }
 
+  /**
+   * Soft-deletes a family. Archiving one that already has children,
+   * contracts, invoices or payments requires OWNER/BRANCH_MANAGER — a
+   * METHODIST/MANAGER can only clean up an empty family (e.g. a duplicate
+   * or a mis-entered one), never one with real history attached.
+   */
+  async archive(user: AuthenticatedUser, branchId: string, id: string) {
+    this.branchScope.assertRoleInBranch(user, [...FAMILY_WRITE_ROLES], branchId);
+    const existing = await this.getOwnedOrThrow(branchId, id);
+    if (existing.archivedAt) throw new ConflictException("Family is already archived");
+
+    const [childCount, contractCount, invoiceCount, paymentCount] = await Promise.all([
+      this.prisma.child.count({ where: { familyId: id } }),
+      this.prisma.contract.count({ where: { familyId: id } }),
+      this.prisma.invoice.count({ where: { familyId: id } }),
+      this.prisma.payment.count({ where: { familyId: id } }),
+    ]);
+    const hasHistory = childCount + contractCount + invoiceCount + paymentCount > 0;
+
+    if (hasHistory && !this.branchScope.hasAnyRoleInBranch(user, [...FAMILY_ARCHIVE_FORCE_ROLES], branchId)) {
+      throw new ForbiddenException(
+        "This family has children, contracts, invoices or payments — only OWNER/BRANCH_MANAGER can archive it",
+      );
+    }
+
+    const family = await this.prisma.family.update({
+      where: { id },
+      data: { archivedAt: new Date() },
+    });
+    await this.audit.record({
+      entity: "family",
+      entityId: id,
+      action: "update",
+      oldValue: { archivedAt: null },
+      newValue: { event: "archive", archivedAt: family.archivedAt },
+      actorId: user.id,
+    });
+    return family;
+  }
+
+  async restore(user: AuthenticatedUser, branchId: string, id: string) {
+    this.branchScope.assertRoleInBranch(user, [...FAMILY_ARCHIVE_FORCE_ROLES], branchId);
+    const existing = await this.getOwnedOrThrow(branchId, id);
+    if (!existing.archivedAt) throw new ConflictException("Family is not archived");
+
+    const family = await this.prisma.family.update({
+      where: { id },
+      data: { archivedAt: null },
+    });
+    await this.audit.record({
+      entity: "family",
+      entityId: id,
+      action: "update",
+      oldValue: { archivedAt: existing.archivedAt },
+      newValue: { event: "restore", archivedAt: null },
+      actorId: user.id,
+    });
+    return family;
+  }
+
   async addParent(
     user: AuthenticatedUser,
     branchId: string,
@@ -97,7 +181,8 @@ export class FamiliesService {
     dto: CreateParentDto,
   ) {
     this.branchScope.assertRoleInBranch(user, [...FAMILY_WRITE_ROLES], branchId);
-    await this.getOwnedOrThrow(branchId, familyId);
+    const family = await this.getOwnedOrThrow(branchId, familyId);
+    if (family.archivedAt) throw new ConflictException("Family is archived — restore it first");
 
     const parent = await this.prisma.parent.create({
       data: { ...dto, familyId, contactPriority: dto.contactPriority ?? 1 },

@@ -108,13 +108,17 @@ const NAV_ITEMS: NavItem[] = [
     key: "/families",
     label: "Семьи",
     icon: <UsergroupAddOutlined />,
-    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT"],
+    // METHODIST can register families/parents at intake — see
+    // FAMILY_WRITE_ROLES in families.service.ts.
+    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "METHODIST"],
   },
   {
     key: "/children",
     label: "Дети",
     icon: <UserOutlined />,
-    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "TEACHER"],
+    // METHODIST can register children at intake — see CHILD_WRITE_ROLES
+    // in child-access.service.ts.
+    roles: ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "TEACHER", "METHODIST"],
   },
   {
     key: "/waitlist",

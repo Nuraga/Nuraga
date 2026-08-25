@@ -17,7 +17,10 @@ function user(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser {
 
 describe("FamiliesService", () => {
   const branchId = "b1";
+  const owner = user({ grants: [{ branchId, role: "OWNER" }] });
+  const branchManager = user({ grants: [{ branchId, role: "BRANCH_MANAGER" }] });
   const manager = user({ grants: [{ branchId, role: "MANAGER" }] });
+  const methodist = user({ grants: [{ branchId, role: "METHODIST" }] });
   const accountant = user({ grants: [{ branchId, role: "ACCOUNTANT" }] });
   const teacher = user({ grants: [{ branchId, role: "TEACHER" }] });
 
@@ -59,6 +62,10 @@ describe("FamiliesService", () => {
       user: {
         findUnique: jest.fn(() => Promise.resolve(null)),
       },
+      child: { count: jest.fn(() => Promise.resolve(0)) },
+      contract: { count: jest.fn(() => Promise.resolve(0)) },
+      invoice: { count: jest.fn(() => Promise.resolve(0)) },
+      payment: { count: jest.fn(() => Promise.resolve(0)) },
       $transaction: jest.fn((fn: any) => fn(tx)),
     };
     audit = { record: jest.fn(() => Promise.resolve()) };
@@ -70,6 +77,12 @@ describe("FamiliesService", () => {
     await expect(service.create(accountant, branchId, { name: "New" })).rejects.toThrow(
       ForbiddenException,
     );
+  });
+
+  it("allows a Methodist to create a family (owner-granted, 2026-08-25)", async () => {
+    await expect(service.create(methodist, branchId, { name: "New" })).resolves.toMatchObject({
+      name: "New",
+    });
   });
 
   it("rejects family list/read for Teacher (works via Children, not Families)", async () => {
@@ -99,11 +112,64 @@ describe("FamiliesService", () => {
     expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ entity: "parent" }));
   });
 
+  it("rejects adding a parent to an archived family", async () => {
+    prisma.family.findUnique.mockResolvedValue({ id: "f1", branchId, archivedAt: new Date() });
+    await expect(
+      service.addParent(manager, branchId, "f1", { fullName: "Иван Иванов", relationship: "отец" }),
+    ).rejects.toThrow("archived");
+  });
+
   it("404s updateParent when the parent belongs to a different family", async () => {
     prisma.parent.findUnique.mockResolvedValue({ id: "p1", familyId: "other-family" });
     await expect(
       service.updateParent(manager, branchId, "f1", "p1", { fullName: "X" }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  describe("archive/restore", () => {
+    it("lets a Methodist archive an empty family", async () => {
+      const result = await service.archive(methodist, branchId, "f1");
+      expect(result.archivedAt).toBeInstanceOf(Date);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ entity: "family", newValue: expect.objectContaining({ event: "archive" }) }),
+      );
+    });
+
+    it("blocks a Methodist from archiving a family that has children", async () => {
+      prisma.child.count.mockResolvedValue(1);
+      await expect(service.archive(methodist, branchId, "f1")).rejects.toThrow(ForbiddenException);
+    });
+
+    it("blocks a Manager from archiving a family with contracts/invoices/payments too (same as children)", async () => {
+      prisma.payment.count.mockResolvedValue(1);
+      await expect(service.archive(manager, branchId, "f1")).rejects.toThrow(ForbiddenException);
+    });
+
+    it("lets Branch Manager archive a non-empty family", async () => {
+      prisma.child.count.mockResolvedValue(2);
+      await expect(service.archive(branchManager, branchId, "f1")).resolves.toMatchObject({
+        archivedAt: expect.any(Date),
+      });
+    });
+
+    it("rejects archiving an already-archived family", async () => {
+      prisma.family.findUnique.mockResolvedValue({ id: "f1", branchId, archivedAt: new Date() });
+      await expect(service.archive(owner, branchId, "f1")).rejects.toThrow("already archived");
+    });
+
+    it("rejects restore from a Methodist — only Owner/Branch Manager can", async () => {
+      await expect(service.restore(methodist, branchId, "f1")).rejects.toThrow(ForbiddenException);
+    });
+
+    it("rejects restoring a family that isn't archived", async () => {
+      await expect(service.restore(owner, branchId, "f1")).rejects.toThrow("not archived");
+    });
+
+    it("lets Owner restore an archived family", async () => {
+      prisma.family.findUnique.mockResolvedValue({ id: "f1", branchId, archivedAt: new Date() });
+      const result = await service.restore(owner, branchId, "f1");
+      expect(result.archivedAt).toBeNull();
+    });
   });
 
   describe("provisionParentAccount", () => {

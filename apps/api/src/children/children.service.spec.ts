@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { TeacherScopeService } from "../common/access/teacher-scope.service";
 import { ChildAccessService } from "./child-access.service";
@@ -20,6 +20,7 @@ function user(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser {
 describe("ChildrenService", () => {
   const branchId = "b1";
   const manager = user({ grants: [{ branchId, role: "MANAGER" }] });
+  const methodist = user({ id: "m1", grants: [{ branchId, role: "METHODIST" }] });
   const teacher = user({ id: "t1", grants: [{ branchId, role: "TEACHER" }] });
 
   let prisma: any;
@@ -84,6 +85,21 @@ describe("ChildrenService", () => {
     await expect(
       service.create(manager, branchId, "f1", { fullName: "X", birthDate: "2020-01-01" }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it("allows a Methodist to register a child (owner-granted, 2026-08-25)", async () => {
+    const child = await service.create(methodist, branchId, "f1", {
+      fullName: "New Child",
+      birthDate: "2020-01-01",
+    });
+    expect(child).toMatchObject({ status: "WAITLIST", familyId: "f1" });
+  });
+
+  it("rejects creation when the family is archived", async () => {
+    prisma.family.findUnique.mockResolvedValue({ id: "f1", branchId, archivedAt: new Date() });
+    await expect(
+      service.create(manager, branchId, "f1", { fullName: "X", birthDate: "2020-01-01" }),
+    ).rejects.toThrow(ConflictException);
   });
 
   it("restricts a Teacher's listing to their assigned groups", async () => {

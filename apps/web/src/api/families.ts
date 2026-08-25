@@ -22,13 +22,20 @@ export interface CreateParentAccountInput {
 }
 
 export const familiesApi = {
-  list: (branchId: string, search?: string) =>
-    api.get<Family[]>(`/branches/${branchId}/families`, { search }),
+  list: (branchId: string, search?: string, archived?: boolean) =>
+    api.get<Family[]>(`/branches/${branchId}/families`, {
+      search,
+      archived: archived ? "true" : undefined,
+    }),
   get: (branchId: string, id: string) => api.get<Family>(`/branches/${branchId}/families/${id}`),
   create: (branchId: string, dto: { name: string }) =>
     api.post<Family>(`/branches/${branchId}/families`, dto),
   update: (branchId: string, id: string, dto: { name: string }) =>
     api.patch<Family>(`/branches/${branchId}/families/${id}`, dto),
+  archive: (branchId: string, id: string) =>
+    api.delete<Family>(`/branches/${branchId}/families/${id}`),
+  restore: (branchId: string, id: string) =>
+    api.post<Family>(`/branches/${branchId}/families/${id}/restore`, {}),
 
   addParent: (branchId: string, familyId: string, dto: CreateParentInput) =>
     api.post<Parent>(`/branches/${branchId}/families/${familyId}/parents`, dto),

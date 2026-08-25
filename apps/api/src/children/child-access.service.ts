@@ -9,9 +9,12 @@ import type { AuthenticatedUser } from "../common/access/branch-access.types";
 // ПСРУ, Manager gets ПСР (no delete/archive — that's the discharge flow),
 // Accountant gets read-only, Teacher gets read-only limited to their own
 // groups. Shared by ChildrenService, ChildMedicalService, DocumentsService
-// so the "own group" rule is defined exactly once.
-export const CHILD_READ_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT"];
-export const CHILD_WRITE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER"];
+// so the "own group" rule is defined exactly once. METHODIST was added on
+// explicit owner request (2026-08-25, not in TRD 2.2/16.3) so a методист
+// can register children at intake alongside the family — same bracket as
+// MANAGER — read + create/edit, no delete.
+export const CHILD_READ_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER", "ACCOUNTANT", "METHODIST"];
+export const CHILD_WRITE_ROLES: Role[] = ["OWNER", "BRANCH_MANAGER", "MANAGER", "METHODIST"];
 
 @Injectable()
 export class ChildAccessService {

@@ -60,6 +60,23 @@ export default function FamilyDetailPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["families", branchId, familyId] });
 
+  const archiveFamily = useMutation({
+    mutationFn: () => familiesApi.archive(branchId, familyId),
+    onSuccess: () => {
+      invalidate();
+      message.success("Семья архивирована");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+  const restoreFamily = useMutation({
+    mutationFn: () => familiesApi.restore(branchId, familyId),
+    onSuccess: () => {
+      invalidate();
+      message.success("Семья восстановлена");
+    },
+    onError: (err) => message.error(err instanceof ApiError ? err.message : "Ошибка"),
+  });
+
   const { data: contracts = [] } = useQuery({
     queryKey: ["contracts", branchId, familyId],
     queryFn: () => contractsApi.listForFamily(branchId, familyId),
@@ -239,7 +256,29 @@ export default function FamilyDetailPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <Typography.Title level={3}>{family.name}</Typography.Title>
+      <Space style={{ width: "100%", justifyContent: "space-between" }}>
+        <Space>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            {family.name}
+          </Typography.Title>
+          {family.archivedAt && <Tag>Архив</Tag>}
+        </Space>
+        {family.archivedAt ? (
+          <Button onClick={() => restoreFamily.mutate()} loading={restoreFamily.isPending}>
+            Восстановить из архива
+          </Button>
+        ) : (
+          <Popconfirm
+            title="Архивировать семью?"
+            description="Семья пропадёт из общего списка; данные сохранятся."
+            onConfirm={() => archiveFamily.mutate()}
+          >
+            <Button danger loading={archiveFamily.isPending}>
+              В архив
+            </Button>
+          </Popconfirm>
+        )}
+      </Space>
 
       <Card
         title="Родители"

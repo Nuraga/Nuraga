@@ -111,6 +111,7 @@ export interface Family {
   name: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt: string | null;
   parents?: Parent[];
   children?: Child[];
   trustedPersons?: TrustedPerson[];

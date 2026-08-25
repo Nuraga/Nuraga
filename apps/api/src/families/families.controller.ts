@@ -30,8 +30,9 @@ export class FamiliesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param("branchId") branchId: string,
     @Query("search") search?: string,
+    @Query("archived") archived?: string,
   ) {
-    return this.families.findAllForBranch(user, branchId, search);
+    return this.families.findAllForBranch(user, branchId, search, archived === "true");
   }
 
   @Get(":id")
@@ -51,6 +52,24 @@ export class FamiliesController {
     @Body() dto: UpdateFamilyDto,
   ) {
     return this.families.update(user, branchId, id, dto);
+  }
+
+  @Delete(":id")
+  archive(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("id") id: string,
+  ) {
+    return this.families.archive(user, branchId, id);
+  }
+
+  @Post(":id/restore")
+  restore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("branchId") branchId: string,
+    @Param("id") id: string,
+  ) {
+    return this.families.restore(user, branchId, id);
   }
 
   @Post(":id/parents")

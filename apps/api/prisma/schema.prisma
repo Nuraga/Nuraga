@@ -170,11 +170,15 @@ model Group {
 // ---------------------------------------------------------------------------
 
 model Family {
-  id        String   @id @default(uuid())
-  branchId  String
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String    @id @default(uuid())
+  branchId   String
+  name       String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  // Soft delete — an archived family drops out of the default list/search
+  // but keeps its children/contracts/invoices/payments intact (TRD 10.3
+  // "мягкое удаление"). Restorable by OWNER/BRANCH_MANAGER only.
+  archivedAt DateTime?
 
   branch         Branch          @relation(fields: [branchId], references: [id])
   parents        Parent[]

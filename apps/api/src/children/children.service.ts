@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { BranchScopeService } from "../common/access/branch-scope.service";
 import { TeacherScopeService } from "../common/access/teacher-scope.service";
@@ -30,6 +30,9 @@ export class ChildrenService {
     const family = await this.prisma.family.findUnique({ where: { id: familyId } });
     if (!family || family.branchId !== branchId) {
       throw new NotFoundException("Family not found");
+    }
+    if (family.archivedAt) {
+      throw new ConflictException("Family is archived — restore it first");
     }
 
     const child = await this.prisma.child.create({
